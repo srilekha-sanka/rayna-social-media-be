@@ -6,10 +6,12 @@ import express, { Express } from 'express'
 import helmet from 'helmet'
 import * as http from 'http'
 import morgan from 'morgan'
+import path from 'path'
 import { logger } from '../app/common/logger/logging'
 import dbConnSeq from '../db/config/database.config'
 import { errorHandler } from '../app/middlewares/commonErrorHandler'
 import routes from '../app/routes'
+import { seedProducts } from '../db/seeds/product.seed'
 
 let routingUrl = '/api/v1'
 
@@ -22,6 +24,7 @@ export class System {
 			})
 		)
 		app.use(express.static(__dirname + '/public'))
+		app.use('/uploads', express.static(path.resolve('./uploads')))
 		app.use(helmet())
 		app.disable('x-powered-by')
 		app.use(compression())
@@ -43,8 +46,9 @@ export class System {
 		try {
 			dbConnSeq
 				.sync({ alter: true, logging: false })
-				.then(() => {
+				.then(async () => {
 					logger.info('📁[DB]: Database is connected and synced.')
+					await seedProducts()
 					const port: number = process.env.PORT ? +process.env.PORT : 3000
 					app.listen(port, async () => {
 						logger.info('----------------------------------------------------------')
