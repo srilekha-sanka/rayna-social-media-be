@@ -107,6 +107,60 @@ class CloudinaryService {
 		} as any)
 	}
 
+	/**
+	 * Upload an image and apply Generative Fill to extend it to target aspect ratio.
+	 * Cloudinary AI fills the extended areas with contextually appropriate content.
+	 * Perfect for converting landscape images to portrait (4:5) for Instagram.
+	 */
+	async generativeFill(
+		source: string | Buffer,
+		options: { folder?: string; aspectRatio?: string; width?: number; height?: number }
+	): Promise<UploadApiResponse> {
+		if (!isConfigured) throw new Error('Cloudinary is not configured.')
+
+		const ar = options.aspectRatio || '4:5'
+		const w = options.width || 1080
+		const h = options.height || 1350
+
+		// Upload the source first, then apply eager transformation with gen_fill
+		const uploadOptions: Record<string, any> = {
+			folder: options.folder || 'rayna/carousel',
+			resource_type: 'image',
+			overwrite: true,
+			eager: [
+				{
+					width: w,
+					height: h,
+					crop: 'pad',
+					aspect_ratio: ar,
+					background: 'gen_fill',
+				},
+			],
+			eager_async: false,
+		}
+
+		if (Buffer.isBuffer(source)) {
+			return new Promise((resolve, reject) => {
+				const stream = cloudinary.uploader.upload_stream(uploadOptions, (err, result) => {
+					if (err || !result) return reject(err || new Error('Generative fill upload failed'))
+					resolve(result)
+				})
+				Readable.from(source).pipe(stream)
+			})
+		}
+
+		// String source — file path or URL
+		return cloudinary.uploader.upload(source, uploadOptions)
+	}
+
+	/** Get the eager transformation URL from an upload result. */
+	getEagerUrl(result: UploadApiResponse): string {
+		if (result.eager && result.eager.length > 0) {
+			return result.eager[0].secure_url || result.eager[0].url
+		}
+		return result.secure_url || result.url
+	}
+
 	/** Verify Cloudinary webhook signature. */
 	verifyWebhook(body: string, timestamp: number, signature: string): boolean {
 		try {

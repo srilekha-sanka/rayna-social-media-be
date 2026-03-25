@@ -3,13 +3,12 @@ import http from 'http'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-import sharp from 'sharp'
 import Product from '../product/product.model'
 import Post from '../post/post.model'
 import Campaign from '../campaign/campaign.model'
 import User from '../user/user.model'
 import { aiService } from '../ai/ai.service'
-import { imageOverlayService } from '../image/image-overlay.service'
+import { imageOverlayService, AspectRatio } from '../image/image-overlay.service'
 import { cloudinaryService } from '../cloudinary/cloudinary.service'
 import { IServiceResponse } from '../../interfaces/IServiceResponse'
 import { NotFoundError, BadRequestError } from '../../errors/api-errors'
@@ -28,6 +27,7 @@ interface GenerateCarouselInput {
 	platform: string
 	slide_count?: number
 	intent?: Intent
+	aspect_ratio?: AspectRatio
 }
 
 interface GenerateReelInput {
@@ -136,7 +136,7 @@ class ContentService {
 		])
 
 		const carouselData = aiContent.payload as {
-			slides: Array<{ overlay_text: string; cta_text: string }>
+			slides: Array<{ overlay_text: string; cta_text: string; subtitle?: string }>
 			caption: string
 			hashtags: string[]
 			cta: string
@@ -144,7 +144,7 @@ class ContentService {
 
 		const processedSlides = await this.processSlides(downloadedImages, carouselData.slides, {
 			price: priceLabel, offerLabel: product.offer_label || undefined,
-		})
+		}, input.aspect_ratio || 'auto')
 
 		const post = await Post.create({
 			campaign_id: campaign_id || null,
@@ -239,65 +239,49 @@ class ContentService {
 
 	private async processSlides(
 		localPaths: string[],
-		slideTexts: Array<{ overlay_text: string; cta_text: string }>,
-		pricing: { price: string; offerLabel?: string }
+		slideTexts: Array<{ overlay_text: string; cta_text: string; subtitle?: string }>,
+		_pricing: { price: string; offerLabel?: string },
+		aspectRatio: AspectRatio = 'auto'
 	) {
 		return Promise.all(
 			localPaths.map(async (localPath, index) => {
 				const slideText = slideTexts[index] || slideTexts[slideTexts.length - 1]
+				const isFirstSlide = index === 0
 				const isLastSlide = index === localPaths.length - 1
+				const isEdgeSlide = isFirstSlide || isLastSlide
 
-				// Resize locally with Sharp (fast, in-memory)
-				const resizedBuffer = await sharp(localPath)
-					.resize(1080, 1080, { fit: 'cover', position: 'center' })
-					.jpeg({ quality: 90 })
-					.toBuffer()
-
-				const resizedPath = path.join(TMP_DIR, `resized-${Date.now()}-${index}.jpeg`)
-				fs.writeFileSync(resizedPath, resizedBuffer)
-
-				const overlays = isLastSlide
-					? this.buildLastSlideOverlays(slideText.cta_text, pricing)
-					: [{ text: slideText.overlay_text, position: 'center' as const, fontSize: 42, fontColor: '#FFFFFF', backgroundColor: 'rgba(0,0,0,0.55)', padding: 24 }]
-
-				const overlayPath = await imageOverlayService.applyOverlay({ imagePath: resizedPath, overlays })
+				const result = await imageOverlayService.processImage(localPath, {
+					template: isEdgeSlide ? 'gradient-cta' : 'minimal-text',
+					aspectRatio,
+					title: slideText.overlay_text,
+					subtitle: isEdgeSlide ? slideText.subtitle : undefined,
+					ctaText: isEdgeSlide ? slideText.cta_text : undefined,
+					accentColor: '#F97316',
+				})
 
 				let url: string
 				let publicId: string | null = null
 
 				if (cloudinaryService.enabled) {
-					const uploaded = await cloudinaryService.upload(overlayPath, { folder: 'rayna/carousel' })
+					const uploaded = await cloudinaryService.uploadBuffer(result.buffer, { folder: 'rayna/carousel' })
 					url = uploaded.secure_url
 					publicId = uploaded.public_id
-					this.cleanup(overlayPath)
 				} else {
-					// Local fallback — move to processed dir
-					const fileName = path.basename(overlayPath)
+					// Local fallback — save buffer to processed dir
+					const fileName = `slide-${Date.now()}-${index}.jpeg`
 					const destPath = path.join(PROCESSED_DIR, fileName)
-					fs.copyFileSync(overlayPath, destPath)
+					fs.writeFileSync(destPath, result.buffer)
 					url = `/uploads/processed/${fileName}`
-					this.cleanup(overlayPath)
 				}
 
-				this.cleanup(localPath, resizedPath)
+				this.cleanup(localPath)
 
 				return {
-					slide_number: index + 1,
 					public_id: publicId,
 					url,
-					overlay_text: isLastSlide ? null : slideText.overlay_text,
-					cta_text: isLastSlide ? slideText.cta_text : null,
 				}
 			})
 		)
-	}
-
-	private buildLastSlideOverlays(ctaText: string, pricing: { price: string; offerLabel?: string }) {
-		const overlays: Array<{ text: string; position: 'top-left' | 'top-right' | 'bottom-center'; fontSize: number; fontColor: string; backgroundColor: string; padding: number }> = []
-		if (pricing.price) overlays.push({ text: pricing.price, position: 'top-right', fontSize: 36, fontColor: '#FFFFFF', backgroundColor: '#E53E3E', padding: 14 })
-		if (pricing.offerLabel) overlays.push({ text: pricing.offerLabel, position: 'top-left', fontSize: 24, fontColor: '#FFFFFF', backgroundColor: '#38A169', padding: 12 })
-		if (ctaText) overlays.push({ text: ctaText, position: 'bottom-center', fontSize: 30, fontColor: '#FFFFFF', backgroundColor: 'rgba(0,0,0,0.8)', padding: 16 })
-		return overlays
 	}
 
 	private classifyIntent(product: Product): Intent {

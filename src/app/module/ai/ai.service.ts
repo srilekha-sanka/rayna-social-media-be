@@ -39,7 +39,7 @@ interface CaptionResponse {
 }
 
 interface CarouselResponse {
-	slides: Array<{ overlay_text: string; cta_text: string }>
+	slides: Array<{ overlay_text: string; cta_text: string; subtitle?: string }>
 	caption: string
 	hashtags: string[]
 	cta: string
@@ -121,12 +121,12 @@ Platform: ${input.platform}`
 			throw new BadRequestError('OPENAI_API_KEY is not configured')
 		}
 
-		const systemPrompt = `You are a social media content designer for Rayna Tours. Generate text content for a carousel post (multiple image slides).
+		const systemPrompt = `You are a social media content designer for Rayna Tours. Generate clean, simple text content for a carousel post (multiple image slides).
 
 Always respond in valid JSON format:
 {
   "slides": [
-    { "overlay_text": "short punchy text for slide", "cta_text": "CTA for slide" }
+    { "overlay_text": "short title for the slide", "cta_text": "Book Now", "subtitle": "one-line description" }
   ],
   "caption": "overall post caption",
   "hashtags": ["#hashtag1"],
@@ -134,12 +134,13 @@ Always respond in valid JSON format:
 }
 
 Rules:
-- Each slide overlay_text should be 3-8 words MAX (it goes ON the image)
-- First slide: hook/attention grabber
-- Middle slides: key selling points / features
-- Last slide: CTA + price/offer
-- Caption: full post text (not on images)
-- Intent drives the messaging: SELL → urgency + offer, VALUE → benefits + features, ENGAGEMENT → questions + community`
+- overlay_text: the product name or a clear, simple description of what the slide shows. Keep it short (3-8 words). No hype, no marketing fluff — just what it is. Example: "Atlantis Aquaventure Waterpark", "Desert Safari with BBQ Dinner"
+- subtitle: one short sentence describing a key feature or what the experience includes. Keep it factual and simple.
+- First slide: product name as overlay_text + cta_text "Book Now" + subtitle with a short description
+- Middle slides: key features or highlights as overlay_text (no CTA, no subtitle)
+- Last slide: a simple closing line as overlay_text + cta_text "Book Now" + subtitle
+- Caption: full post caption text (this goes in the social media post body, not on images)
+- Do NOT include prices, discounts, or offer text in overlay_text or subtitle`
 
 		const userPrompt = `Product: ${input.product_name}
 Description: ${input.product_description}
