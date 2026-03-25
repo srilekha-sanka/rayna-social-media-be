@@ -25,4 +25,9 @@ export const env = Object.freeze({
 		apiKey: process.env.OUTSTAND_API_KEY || '',
 		baseUrl: process.env.OUTSTAND_BASE_URL || 'https://api.outstand.so/v1',
 	},
+	cloudinary: {
+		cloudName: process.env.CLOUDINARY_CLOUD_NAME || '',
+		apiKey: process.env.CLOUDINARY_API_KEY || '',
+		apiSecret: process.env.CLOUDINARY_API_SECRET || '',
+	},
 })
