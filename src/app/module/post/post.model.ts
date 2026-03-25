@@ -1,4 +1,4 @@
-import { Table, Column, DataType, ForeignKey, BelongsTo, HasMany } from 'sequelize-typescript'
+import { Table, Column, DataType, ForeignKey, BelongsTo } from 'sequelize-typescript'
 import { Optional } from 'sequelize'
 import BaseModel from '../../utils/base.model'
 import { BaseAttributes, BaseModelType } from '../../interfaces/BaseAttributes'
@@ -19,6 +19,9 @@ interface PostAttributes extends BaseAttributes {
 	status: PostStatus
 	scheduled_at: Date | null
 	published_at: Date | null
+	approved_by: string | null
+	approval_note: string | null
+	rejection_reason: string | null
 }
 
 interface PostCreationAttributes
@@ -34,6 +37,9 @@ interface PostCreationAttributes
 		| 'status'
 		| 'scheduled_at'
 		| 'published_at'
+		| 'approved_by'
+		| 'approval_note'
+		| 'rejection_reason'
 	> {}
 
 @Table({
@@ -113,6 +119,25 @@ class Post extends BaseModel<PostAttributes, PostCreationAttributes> {
 		allowNull: true,
 	})
 	published_at?: Date
+
+	@ForeignKey(() => User)
+	@Column({
+		type: DataType.UUID,
+		allowNull: true,
+	})
+	approved_by?: string
+
+	@Column({
+		type: DataType.TEXT,
+		allowNull: true,
+	})
+	approval_note?: string
+
+	@Column({
+		type: DataType.TEXT,
+		allowNull: true,
+	})
+	rejection_reason?: string
 }
 
 export default Post

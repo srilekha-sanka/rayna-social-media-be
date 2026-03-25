@@ -62,6 +62,59 @@ class PostController extends ResponseService {
 			next(err)
 		}
 	}
+
+	submitForReview = async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			const { statusCode, payload, message } = await postService.submitForReview(req.params.id)
+			return this.sendResponse(res, statusCode, payload, message)
+		} catch (err) {
+			next(err)
+		}
+	}
+
+	approve = async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			const adminId = req.user.userId
+			const { note } = req.body
+			const { statusCode, payload, message } = await postService.approve(req.params.id, adminId, note)
+			return this.sendResponse(res, statusCode, payload, message)
+		} catch (err) {
+			next(err)
+		}
+	}
+
+	reject = async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			const adminId = req.user.userId
+			const { reason } = req.body
+			const { statusCode, payload, message } = await postService.reject(req.params.id, adminId, reason)
+			return this.sendResponse(res, statusCode, payload, message)
+		} catch (err) {
+			next(err)
+		}
+	}
+
+	publish = async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			const { statusCode, payload, message } = await postService.publish(req.params.id)
+			return this.sendResponse(res, statusCode, payload, message)
+		} catch (err) {
+			next(err)
+		}
+	}
+
+	schedule = async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			const { scheduled_at } = req.body
+			if (!scheduled_at) {
+				return this.sendResponse(res, 400, null, 'scheduled_at is required')
+			}
+			const { statusCode, payload, message } = await postService.schedule(req.params.id, scheduled_at)
+			return this.sendResponse(res, statusCode, payload, message)
+		} catch (err) {
+			next(err)
+		}
+	}
 }
 
 export default PostController

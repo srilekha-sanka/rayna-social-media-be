@@ -1,9 +1,9 @@
-import Anthropic from '@anthropic-ai/sdk'
+import OpenAI from 'openai'
 import { env } from '../../../db/config/env.config'
 import { IServiceResponse } from '../../interfaces/IServiceResponse'
 import { BadRequestError } from '../../errors/api-errors'
 
-const anthropic = new Anthropic({ apiKey: env.claude.apiKey })
+const openai = new OpenAI({ apiKey: env.openai.apiKey })
 
 interface CaptionInput {
 	product_name: string
@@ -47,9 +47,10 @@ interface CarouselResponse {
 
 class AiService {
 	async generateCaption(input: CaptionInput): Promise<IServiceResponse> {
-		if (!env.claude.apiKey) {
-			throw new BadRequestError('CLAUDE_API_KEY is not configured')
+		if (!env.openai.apiKey) {
+			throw new BadRequestError('OPENAI_API_KEY is not configured')
 		}
+		console.log('Generating caption with input:', input)
 
 		const systemPrompt = `You are a social media marketing expert for Rayna Tours, a Dubai-based tours and activities company. Generate engaging social media captions.
 
@@ -65,8 +66,7 @@ Rules:
 - Generate 10-15 relevant hashtags
 - CTA should match the intent: SELL → "Book Now" style, VALUE → "Learn More" style, ENGAGEMENT → "Tell us / Tag a friend" style
 - Tone: ${input.tone || 'professional yet friendly'}
-- Platform: ${input.platform} (respect character limits)
-- Respond with ONLY the JSON object, no other text`
+- Platform: ${input.platform} (respect character limits)`
 
 		const userPrompt = `Product: ${input.product_name}
 Description: ${input.product_description}
@@ -77,14 +77,15 @@ Platform: ${input.platform}
 
 Generate captions, hashtags, and CTA for this product.`
 
-		const result = await this.callClaude<CaptionResponse>(systemPrompt, userPrompt)
-
+		const result = await this.callOpenAI<CaptionResponse>(systemPrompt, userPrompt)
+console.log('Generating caption with input:', systemPrompt, userPrompt)
 		return { statusCode: 200, payload: result, message: 'Caption generated successfully' }
 	}
 
+	
 	async generateHashtags(input: HashtagInput): Promise<IServiceResponse> {
-		if (!env.claude.apiKey) {
-			throw new BadRequestError('CLAUDE_API_KEY is not configured')
+		if (!env.openai.apiKey) {
+			throw new BadRequestError('OPENAI_API_KEY is not configured')
 		}
 
 		const systemPrompt = `You are a social media hashtag expert. Generate relevant, high-performing hashtags for tourism content.
@@ -103,22 +104,21 @@ Always respond in valid JSON format:
 Rules:
 - 10-15 hashtags total
 - Mix of brand, product, geo, and trending hashtags
-- Platform: ${input.platform} (Instagram allows 30, X/Twitter 2-3 recommended)
-- Respond with ONLY the JSON object, no other text`
+- Platform: ${input.platform} (Instagram allows 30, X/Twitter 2-3 recommended)`
 
 		const userPrompt = `Product: ${input.product_name}
 ${input.category ? `Category: ${input.category}` : ''}
 ${input.city ? `City: ${input.city}` : ''}
 Platform: ${input.platform}`
 
-		const result = await this.callClaude(systemPrompt, userPrompt)
+		const result = await this.callOpenAI(systemPrompt, userPrompt)
 
 		return { statusCode: 200, payload: result, message: 'Hashtags generated successfully' }
 	}
 
 	async generateCarouselContent(input: CarouselCaptionInput): Promise<IServiceResponse> {
-		if (!env.claude.apiKey) {
-			throw new BadRequestError('CLAUDE_API_KEY is not configured')
+		if (!env.openai.apiKey) {
+			throw new BadRequestError('OPENAI_API_KEY is not configured')
 		}
 
 		const systemPrompt = `You are a social media content designer for Rayna Tours. Generate text content for a carousel post (multiple image slides).
@@ -139,8 +139,7 @@ Rules:
 - Middle slides: key selling points / features
 - Last slide: CTA + price/offer
 - Caption: full post text (not on images)
-- Intent drives the messaging: SELL → urgency + offer, VALUE → benefits + features, ENGAGEMENT → questions + community
-- Respond with ONLY the JSON object, no other text`
+- Intent drives the messaging: SELL → urgency + offer, VALUE → benefits + features, ENGAGEMENT → questions + community`
 
 		const userPrompt = `Product: ${input.product_name}
 Description: ${input.product_description}
@@ -152,48 +151,29 @@ Number of slides: ${input.slide_count}
 
 Generate carousel content for ${input.slide_count} slides.`
 
-		const result = await this.callClaude<CarouselResponse>(systemPrompt, userPrompt)
+		const result = await this.callOpenAI<CarouselResponse>(systemPrompt, userPrompt)
 
 		return { statusCode: 200, payload: result, message: 'Carousel content generated successfully' }
 	}
 
-	private async callClaude<T = any>(systemPrompt: string, userPrompt: string): Promise<T> {
-		const response = await anthropic.messages.create({
-			model: env.claude.model,
-			max_tokens: 1024,
-			system: systemPrompt,
+	private async callOpenAI<T = any>(systemPrompt: string, userPrompt: string): Promise<T> {
+		const response = await openai.chat.completions.create({
+			model: env.openai.model,
 			messages: [
+				{ role: 'system', content: systemPrompt },
 				{ role: 'user', content: userPrompt },
 			],
+			temperature: 0.7,
+			response_format: { type: 'json_object' },
 		})
 
-		const textBlock = response.content.find((block) => block.type === 'text')
+		const content = response.choices[0]?.message?.content
 
-		if (!textBlock || textBlock.type !== 'text') {
+		if (!content) {
 			throw new BadRequestError('No response from AI')
 		}
 
-		const jsonStr = this.extractJson(textBlock.text)
-
-		return JSON.parse(jsonStr) as T
-	}
-
-	/**
-	 * Extract JSON from Claude's response — handles cases where
-	 * Claude wraps JSON in markdown code blocks.
-	 */
-	private extractJson(text: string): string {
-		const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/)
-		if (codeBlockMatch) {
-			return codeBlockMatch[1].trim()
-		}
-
-		const jsonMatch = text.match(/\{[\s\S]*\}/)
-		if (jsonMatch) {
-			return jsonMatch[0]
-		}
-
-		return text.trim()
+		return JSON.parse(content) as T
 	}
 }
 

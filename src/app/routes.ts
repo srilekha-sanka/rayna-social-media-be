@@ -7,6 +7,7 @@ import { campaignRouter } from './module/campaign/campaign.routes'
 import { postRouter } from './module/post/post.routes'
 import { imageRouter } from './module/image/image.routes'
 import { aiRouter } from './module/ai/ai.routes'
+import { contentRouter } from './module/content/content.routes'
 import { verifyToken } from './middlewares/verifyAuth'
 
 const routes = express.Router()
@@ -19,5 +20,6 @@ routes.use('/campaigns', verifyToken, campaignRouter)
 routes.use('/posts', verifyToken, postRouter)
 routes.use('/image', verifyToken, imageRouter)
 routes.use('/ai', verifyToken, aiRouter)
+routes.use('/content', verifyToken, contentRouter)
 
 export default routes
