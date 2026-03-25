@@ -1,21 +1,21 @@
 import { Request, Response, NextFunction } from 'express'
-import { campaignService } from './campaign.service'
-import { createCampaignSchema, updateCampaignSchema } from './campaign.validator'
+import { brandService } from './brand.service'
+import { createBrandSchema, updateBrandSchema } from './brand.validator'
 import ResponseService from '../../utils/response.service'
 import { BadRequestError } from '../../errors/api-errors'
 
-class CampaignController extends ResponseService {
+class BrandController extends ResponseService {
 	constructor() {
 		super()
 	}
 
 	create = async (req: Request, res: Response, next: NextFunction) => {
 		try {
-			const { error, value } = createCampaignSchema.validate(req.body, { abortEarly: false, stripUnknown: true })
+			const { error, value } = createBrandSchema.validate(req.body, { abortEarly: false, stripUnknown: true })
 			if (error) throw new BadRequestError(error.details.map((d) => d.message).join(', '))
 
 			const userId = req.user.userId
-			const { statusCode, payload, message } = await campaignService.create(value, userId)
+			const { statusCode, payload, message } = await brandService.create(value, userId)
 			return this.sendResponse(res, statusCode, payload, message)
 		} catch (err) {
 			next(err)
@@ -27,10 +27,8 @@ class CampaignController extends ResponseService {
 			const query = {
 				page: Math.max(1, parseInt(req.query.page as string, 10) || 1),
 				limit: Math.min(100, Math.max(1, parseInt(req.query.limit as string, 10) || 20)),
-				status: req.query.status as string | undefined,
-				goal: req.query.goal as string | undefined,
 			}
-			const { statusCode, payload, message } = await campaignService.findAll(query)
+			const { statusCode, payload, message } = await brandService.findAll(query)
 			return this.sendResponse(res, statusCode, payload, message)
 		} catch (err) {
 			next(err)
@@ -39,7 +37,7 @@ class CampaignController extends ResponseService {
 
 	findById = async (req: Request, res: Response, next: NextFunction) => {
 		try {
-			const { statusCode, payload, message } = await campaignService.findById(req.params.id)
+			const { statusCode, payload, message } = await brandService.findById(req.params.id)
 			return this.sendResponse(res, statusCode, payload, message)
 		} catch (err) {
 			next(err)
@@ -48,10 +46,10 @@ class CampaignController extends ResponseService {
 
 	update = async (req: Request, res: Response, next: NextFunction) => {
 		try {
-			const { error, value } = updateCampaignSchema.validate(req.body, { abortEarly: false, stripUnknown: true })
+			const { error, value } = updateBrandSchema.validate(req.body, { abortEarly: false, stripUnknown: true })
 			if (error) throw new BadRequestError(error.details.map((d) => d.message).join(', '))
 
-			const { statusCode, payload, message } = await campaignService.update(req.params.id, value as any)
+			const { statusCode, payload, message } = await brandService.update(req.params.id, value as any)
 			return this.sendResponse(res, statusCode, payload, message)
 		} catch (err) {
 			next(err)
@@ -60,7 +58,7 @@ class CampaignController extends ResponseService {
 
 	delete = async (req: Request, res: Response, next: NextFunction) => {
 		try {
-			const { statusCode, payload, message } = await campaignService.delete(req.params.id)
+			const { statusCode, payload, message } = await brandService.delete(req.params.id)
 			return this.sendResponse(res, statusCode, payload, message)
 		} catch (err) {
 			next(err)
@@ -68,4 +66,4 @@ class CampaignController extends ResponseService {
 	}
 }
 
-export default CampaignController
+export default BrandController

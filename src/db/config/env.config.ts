@@ -21,4 +21,8 @@ export const env = Object.freeze({
 		apiKey: process.env.OPENAI_API_KEY || '',
 		model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
 	},
+	outstand: {
+		apiKey: process.env.OUTSTAND_API_KEY || '',
+		baseUrl: process.env.OUTSTAND_BASE_URL || 'https://api.outstand.so/v1',
+	},
 })

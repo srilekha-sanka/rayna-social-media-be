@@ -1,7 +1,8 @@
 import { Request, Response, NextFunction } from 'express'
 import { productService } from './product.service'
-import { validateCreateProduct, validateUpdateProduct, validateProductListQuery } from './product.validator'
+import { createProductSchema, updateProductSchema, productListQuerySchema } from './product.validator'
 import ResponseService from '../../utils/response.service'
+import { BadRequestError } from '../../errors/api-errors'
 
 class ProductController extends ResponseService {
 	constructor() {
@@ -10,8 +11,10 @@ class ProductController extends ResponseService {
 
 	create = async (req: Request, res: Response, next: NextFunction) => {
 		try {
-			const validated = validateCreateProduct(req.body)
-			const { statusCode, payload, message } = await productService.create(validated)
+			const { error, value } = createProductSchema.validate(req.body, { abortEarly: false, stripUnknown: true })
+			if (error) throw new BadRequestError(error.details.map((d) => d.message).join(', '))
+
+			const { statusCode, payload, message } = await productService.create(value)
 			return this.sendResponse(res, statusCode, payload, message)
 		} catch (err) {
 			next(err)
@@ -20,8 +23,10 @@ class ProductController extends ResponseService {
 
 	findAll = async (req: Request, res: Response, next: NextFunction) => {
 		try {
-			const query = validateProductListQuery(req.query)
-			const { statusCode, payload, message } = await productService.findAll(query)
+			const { error, value } = productListQuerySchema.validate(req.query, { abortEarly: false, stripUnknown: true })
+			if (error) throw new BadRequestError(error.details.map((d) => d.message).join(', '))
+
+			const { statusCode, payload, message } = await productService.findAll(value)
 			return this.sendResponse(res, statusCode, payload, message)
 		} catch (err) {
 			next(err)
@@ -39,8 +44,10 @@ class ProductController extends ResponseService {
 
 	update = async (req: Request, res: Response, next: NextFunction) => {
 		try {
-			const validated = validateUpdateProduct(req.body)
-			const { statusCode, payload, message } = await productService.update(req.params.id, validated)
+			const { error, value } = updateProductSchema.validate(req.body, { abortEarly: false, stripUnknown: true })
+			if (error) throw new BadRequestError(error.details.map((d) => d.message).join(', '))
+
+			const { statusCode, payload, message } = await productService.update(req.params.id, value)
 			return this.sendResponse(res, statusCode, payload, message)
 		} catch (err) {
 			next(err)
@@ -61,10 +68,16 @@ class ProductController extends ResponseService {
 			const { products } = req.body
 
 			if (!Array.isArray(products) || products.length === 0) {
-				return this.sendResponse(res, 400, null, 'products array is required')
+				throw new BadRequestError('products array is required')
 			}
 
-			const validated = products.map(validateCreateProduct)
+			const validated: any[] = []
+			for (const product of products) {
+				const { error, value } = createProductSchema.validate(product, { abortEarly: false, stripUnknown: true })
+				if (error) throw new BadRequestError(error.details.map((d) => d.message).join(', '))
+				validated.push(value)
+			}
+
 			const { statusCode, payload, message } = await productService.bulkCreate(validated)
 			return this.sendResponse(res, statusCode, payload, message)
 		} catch (err) {

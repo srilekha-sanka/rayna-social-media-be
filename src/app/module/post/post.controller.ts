@@ -1,7 +1,8 @@
 import { Request, Response, NextFunction } from 'express'
 import { postService } from './post.service'
-import { validateCreatePost, validateUpdatePost } from './post.validator'
+import { createPostSchema, updatePostSchema, schedulePostSchema, rejectPostSchema, approvePostSchema } from './post.validator'
 import ResponseService from '../../utils/response.service'
+import { BadRequestError } from '../../errors/api-errors'
 
 class PostController extends ResponseService {
 	constructor() {
@@ -10,9 +11,11 @@ class PostController extends ResponseService {
 
 	create = async (req: Request, res: Response, next: NextFunction) => {
 		try {
-			const validated = validateCreatePost(req.body)
+			const { error, value } = createPostSchema.validate(req.body, { abortEarly: false, stripUnknown: true })
+			if (error) throw new BadRequestError(error.details.map((d) => d.message).join(', '))
+
 			const authorId = req.user.userId
-			const { statusCode, payload, message } = await postService.create(validated, authorId)
+			const { statusCode, payload, message } = await postService.create(value, authorId)
 			return this.sendResponse(res, statusCode, payload, message)
 		} catch (err) {
 			next(err)
@@ -46,8 +49,10 @@ class PostController extends ResponseService {
 
 	update = async (req: Request, res: Response, next: NextFunction) => {
 		try {
-			const validated = validateUpdatePost(req.body)
-			const { statusCode, payload, message } = await postService.update(req.params.id, validated as any)
+			const { error, value } = updatePostSchema.validate(req.body, { abortEarly: false, stripUnknown: true })
+			if (error) throw new BadRequestError(error.details.map((d) => d.message).join(', '))
+
+			const { statusCode, payload, message } = await postService.update(req.params.id, value as any)
 			return this.sendResponse(res, statusCode, payload, message)
 		} catch (err) {
 			next(err)
@@ -74,9 +79,11 @@ class PostController extends ResponseService {
 
 	approve = async (req: Request, res: Response, next: NextFunction) => {
 		try {
+			const { error, value } = approvePostSchema.validate(req.body, { abortEarly: false, stripUnknown: true })
+			if (error) throw new BadRequestError(error.details.map((d) => d.message).join(', '))
+
 			const adminId = req.user.userId
-			const { note } = req.body
-			const { statusCode, payload, message } = await postService.approve(req.params.id, adminId, note)
+			const { statusCode, payload, message } = await postService.approve(req.params.id, adminId, value.note)
 			return this.sendResponse(res, statusCode, payload, message)
 		} catch (err) {
 			next(err)
@@ -85,9 +92,11 @@ class PostController extends ResponseService {
 
 	reject = async (req: Request, res: Response, next: NextFunction) => {
 		try {
+			const { error, value } = rejectPostSchema.validate(req.body, { abortEarly: false, stripUnknown: true })
+			if (error) throw new BadRequestError(error.details.map((d) => d.message).join(', '))
+
 			const adminId = req.user.userId
-			const { reason } = req.body
-			const { statusCode, payload, message } = await postService.reject(req.params.id, adminId, reason)
+			const { statusCode, payload, message } = await postService.reject(req.params.id, adminId, value.reason)
 			return this.sendResponse(res, statusCode, payload, message)
 		} catch (err) {
 			next(err)
@@ -105,11 +114,10 @@ class PostController extends ResponseService {
 
 	schedule = async (req: Request, res: Response, next: NextFunction) => {
 		try {
-			const { scheduled_at } = req.body
-			if (!scheduled_at) {
-				return this.sendResponse(res, 400, null, 'scheduled_at is required')
-			}
-			const { statusCode, payload, message } = await postService.schedule(req.params.id, scheduled_at)
+			const { error, value } = schedulePostSchema.validate(req.body, { abortEarly: false, stripUnknown: true })
+			if (error) throw new BadRequestError(error.details.map((d) => d.message).join(', '))
+
+			const { statusCode, payload, message } = await postService.schedule(req.params.id, value.scheduled_at)
 			return this.sendResponse(res, statusCode, payload, message)
 		} catch (err) {
 			next(err)

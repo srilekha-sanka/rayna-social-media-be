@@ -1,7 +1,8 @@
 import { Request, Response, NextFunction } from 'express'
 import { contentService } from './content.service'
-import { validateGenerateCarousel } from './content.validator'
+import { generateCarouselSchema } from './content.validator'
 import ResponseService from '../../utils/response.service'
+import { BadRequestError } from '../../errors/api-errors'
 
 class ContentController extends ResponseService {
 	constructor() {
@@ -10,9 +11,11 @@ class ContentController extends ResponseService {
 
 	generateCarousel = async (req: Request, res: Response, next: NextFunction) => {
 		try {
-			const validated = validateGenerateCarousel(req.body)
+			const { error, value } = generateCarouselSchema.validate(req.body, { abortEarly: false, stripUnknown: true })
+			if (error) throw new BadRequestError(error.details.map((d) => d.message).join(', '))
+
 			const authorId = req.user.userId
-			const { statusCode, payload, message } = await contentService.generateCarousel(validated, authorId)
+			const { statusCode, payload, message } = await contentService.generateCarousel(value, authorId)
 			return this.sendResponse(res, statusCode, payload, message)
 		} catch (err) {
 			next(err)
