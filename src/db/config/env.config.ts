@@ -17,4 +17,21 @@ export const env = Object.freeze({
 		accessExpiry: process.env.JWT_ACCESS_EXPIRY || '15m',
 		refreshExpiry: process.env.JWT_REFRESH_EXPIRY || '7d',
 	},
+	openai: {
+		apiKey: process.env.OPENAI_API_KEY || '',
+		model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+	},
+	outstand: {
+		apiKey: process.env.OUTSTAND_API_KEY || '',
+		baseUrl: process.env.OUTSTAND_BASE_URL || 'https://api.outstand.so/v1',
+	},
+	cloudinary: {
+		cloudName: process.env.CLOUDINARY_CLOUD_NAME || '',
+		apiKey: process.env.CLOUDINARY_API_KEY || '',
+		apiSecret: process.env.CLOUDINARY_API_SECRET || '',
+	},
+	instagram: {
+		appId: process.env.INSTAGRAM_APP_ID || '',
+		appSecret: process.env.INSTAGRAM_APP_SECRET || '',
+	},
 })
