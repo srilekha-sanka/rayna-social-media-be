@@ -1,0 +1,326 @@
+import https from 'https'
+import http from 'http'
+import fs from 'fs'
+import path from 'path'
+import os from 'os'
+import Product from '../product/product.model'
+import Post from '../post/post.model'
+import Campaign from '../campaign/campaign.model'
+import User from '../user/user.model'
+import { aiService } from '../ai/ai.service'
+import { imageOverlayService, AspectRatio } from '../image/image-overlay.service'
+import { cloudinaryService } from '../cloudinary/cloudinary.service'
+import { IServiceResponse } from '../../interfaces/IServiceResponse'
+import { NotFoundError, BadRequestError } from '../../errors/api-errors'
+import { UPLOAD_DIR } from '../../config/upload.config'
+import { logger } from '../../common/logger/logging'
+
+const PROCESSED_DIR = path.join(UPLOAD_DIR, 'processed')
+if (!fs.existsSync(PROCESSED_DIR)) fs.mkdirSync(PROCESSED_DIR, { recursive: true })
+
+type Intent = 'SELL' | 'VALUE' | 'ENGAGEMENT'
+type JobStatus = 'PROCESSING' | 'COMPLETED' | 'FAILED'
+
+interface GenerateCarouselInput {
+	product_id: string
+	campaign_id?: string
+	platform: string
+	slide_count?: number
+	intent?: Intent
+	aspect_ratio?: AspectRatio
+}
+
+interface GenerateReelInput {
+	product_id: string
+	campaign_id?: string
+	platform: string
+	slide_duration?: number
+	transition_duration?: number
+}
+
+interface Job {
+	status: JobStatus
+	result?: any
+	error?: string
+	started_at: Date
+	completed_at?: Date
+}
+
+const TMP_DIR = path.join(os.tmpdir(), 'rayna-processing')
+if (!fs.existsSync(TMP_DIR)) fs.mkdirSync(TMP_DIR, { recursive: true })
+
+/** In-memory job store. Replace with Redis for multi-instance deployments. */
+const jobStore = new Map<string, Job>()
+
+class ContentService {
+	async generateCarousel(input: GenerateCarouselInput, authorId: string): Promise<IServiceResponse> {
+		const product = await Product.findByPk(input.product_id)
+		if (!product) throw new NotFoundError('Product not found')
+		if (!product.image_urls || product.image_urls.length === 0) {
+			throw new BadRequestError('Product has no images. Upload images first.')
+		}
+
+		const jobId = `cj-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+		jobStore.set(jobId, { status: 'PROCESSING', started_at: new Date() })
+
+		this.processCarousel(jobId, input, product, authorId).catch((err) => {
+			logger.error(`Carousel job ${jobId} failed: ${err.message}`)
+			jobStore.set(jobId, { status: 'FAILED', error: err.message, started_at: jobStore.get(jobId)!.started_at, completed_at: new Date() })
+		})
+
+		return {
+			statusCode: 202,
+			payload: { job_id: jobId, status: 'PROCESSING' },
+			message: 'Carousel generation started. Poll GET /content/jobs/:id for result.',
+		}
+	}
+
+	async generateReel(input: GenerateReelInput, authorId: string): Promise<IServiceResponse> {
+		const product = await Product.findByPk(input.product_id)
+		if (!product) throw new NotFoundError('Product not found')
+		if (!product.image_urls || product.image_urls.length < 2) {
+			throw new BadRequestError('Product needs at least 2 images for a reel.')
+		}
+
+		const jobId = `rj-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+		jobStore.set(jobId, { status: 'PROCESSING', started_at: new Date() })
+
+		this.processReel(jobId, input, product, authorId).catch((err) => {
+			logger.error(`Reel job ${jobId} failed: ${err.message}`)
+			jobStore.set(jobId, { status: 'FAILED', error: err.message, started_at: jobStore.get(jobId)!.started_at, completed_at: new Date() })
+		})
+
+		return {
+			statusCode: 202,
+			payload: { job_id: jobId, status: 'PROCESSING' },
+			message: 'Reel generation started. Poll GET /content/jobs/:id for result.',
+		}
+	}
+
+	getJobStatus(jobId: string): IServiceResponse {
+		const job = jobStore.get(jobId)
+		if (!job) throw new NotFoundError('Job not found')
+
+		return {
+			statusCode: 200,
+			payload: {
+				job_id: jobId,
+				status: job.status,
+				...(job.status === 'COMPLETED' && { result: job.result }),
+				...(job.status === 'FAILED' && { error: job.error }),
+				started_at: job.started_at,
+				completed_at: job.completed_at || null,
+			},
+			message: job.status === 'PROCESSING' ? 'Still processing...' : `Job ${job.status.toLowerCase()}`,
+		}
+	}
+
+	// ── Private: Carousel Processing ─────────────────────────────────
+
+	private async processCarousel(jobId: string, input: GenerateCarouselInput, product: Product, authorId: string) {
+		const { campaign_id, platform } = input
+		const slideCount = Math.min(input.slide_count || product.image_urls.length, product.image_urls.length, 10)
+		const intent = input.intent || this.classifyIntent(product)
+		const priceLabel = `${product.currency} ${product.price}`
+
+		const [aiContent, downloadedImages] = await Promise.all([
+			aiService.generateCarouselContent({
+				product_name: product.name,
+				product_description: product.short_description || product.description,
+				price: priceLabel,
+				offer: product.offer_label || undefined,
+				intent, platform,
+				slide_count: slideCount,
+			}),
+			this.downloadAllImages(product.image_urls.slice(0, slideCount)),
+		])
+
+		const carouselData = aiContent.payload as {
+			slides: Array<{ overlay_text: string; cta_text: string; subtitle?: string }>
+			caption: string
+			hashtags: string[]
+			cta: string
+		}
+
+		const processedSlides = await this.processSlides(downloadedImages, carouselData.slides, {
+			price: priceLabel, offerLabel: product.offer_label || undefined,
+		}, input.aspect_ratio || 'auto')
+
+		const post = await Post.create({
+			campaign_id: campaign_id || null,
+			author_id: authorId,
+			base_content: carouselData.caption,
+			hashtags: carouselData.hashtags,
+			cta_text: carouselData.cta,
+			platforms: [platform],
+			media_urls: processedSlides.map((s) => s.url),
+			status: 'DRAFT',
+		} as any)
+
+		const fullPost = await Post.findByPk(post.id, {
+			include: [
+				{ model: Campaign, attributes: ['id', 'name', 'goal', 'type'], include: [{ model: Product, attributes: ['id', 'name', 'price', 'offer_label'] }] },
+				{ model: User, as: 'author', attributes: ['id', 'email', 'first_name'] },
+			],
+		})
+
+		jobStore.set(jobId, {
+			status: 'COMPLETED',
+			result: {
+				post: fullPost,
+				slides: processedSlides,
+				ai_content: { caption: carouselData.caption, hashtags: carouselData.hashtags, cta: carouselData.cta, slide_texts: carouselData.slides },
+				meta: { product_id: product.id, product_name: product.name, intent, platform, slide_count: slideCount },
+			},
+			started_at: jobStore.get(jobId)!.started_at,
+			completed_at: new Date(),
+		})
+		logger.info(`Carousel job ${jobId} completed`)
+	}
+
+	// ── Private: Reel Processing (Cloudinary does the heavy lifting) ─
+
+	private async processReel(jobId: string, input: GenerateReelInput, product: Product, authorId: string) {
+		const imageUrls = product.image_urls.slice(0, 10)
+
+		// Upload all product images to Cloudinary (if not already there)
+		const uploadedImages = await Promise.all(
+			imageUrls.map((url, i) =>
+				cloudinaryService.uploadUrl(url, {
+					folder: `rayna/reels/${product.id}`,
+					publicId: `slide-${i}`,
+				})
+			)
+		)
+
+		const publicIds = uploadedImages.map((r) => r.public_id)
+
+		// Cloudinary creates the video — zero processing on our server
+		const slideshow = await cloudinaryService.createSlideshow(publicIds, {
+			publicId: `rayna/reels/${product.id}/reel-${Date.now()}`,
+			slideDuration: input.slide_duration || 3,
+			transitionDuration: input.transition_duration || 1,
+		})
+
+		// Cloudinary returns the video URL (may still be processing if async)
+		const videoUrl = slideshow.secure_url || slideshow.url || null
+
+		const post = await Post.create({
+			campaign_id: input.campaign_id || null,
+			author_id: authorId,
+			base_content: `${product.name} — Reel`,
+			platforms: [input.platform],
+			media_urls: videoUrl ? [videoUrl] : [],
+			status: 'DRAFT',
+		} as any)
+
+		const fullPost = await Post.findByPk(post.id, {
+			include: [
+				{ model: Campaign, attributes: ['id', 'name', 'goal', 'type'] },
+				{ model: User, as: 'author', attributes: ['id', 'email', 'first_name'] },
+			],
+		})
+
+		jobStore.set(jobId, {
+			status: 'COMPLETED',
+			result: {
+				post: fullPost,
+				video_url: videoUrl,
+				public_id: slideshow.public_id,
+				meta: { product_id: product.id, product_name: product.name, platform: input.platform, slide_count: imageUrls.length },
+			},
+			started_at: jobStore.get(jobId)!.started_at,
+			completed_at: new Date(),
+		})
+		logger.info(`Reel job ${jobId} completed`)
+	}
+
+	// ── Private: Slide Processing ────────────────────────────────────
+
+	private async processSlides(
+		localPaths: string[],
+		slideTexts: Array<{ overlay_text: string; cta_text: string; subtitle?: string }>,
+		_pricing: { price: string; offerLabel?: string },
+		aspectRatio: AspectRatio = 'auto'
+	) {
+		return Promise.all(
+			localPaths.map(async (localPath, index) => {
+				const slideText = slideTexts[index] || slideTexts[slideTexts.length - 1]
+				const isFirstSlide = index === 0
+				const isLastSlide = index === localPaths.length - 1
+				const isEdgeSlide = isFirstSlide || isLastSlide
+
+				const result = await imageOverlayService.processImage(localPath, {
+					template: isEdgeSlide ? 'gradient-cta' : 'minimal-text',
+					aspectRatio,
+					title: slideText.overlay_text,
+					subtitle: isEdgeSlide ? slideText.subtitle : undefined,
+					ctaText: isEdgeSlide ? slideText.cta_text : undefined,
+					accentColor: '#F97316',
+				})
+
+				let url: string
+				let publicId: string | null = null
+
+				if (cloudinaryService.enabled) {
+					const uploaded = await cloudinaryService.uploadBuffer(result.buffer, { folder: 'rayna/carousel' })
+					url = uploaded.secure_url
+					publicId = uploaded.public_id
+				} else {
+					// Local fallback — save buffer to processed dir
+					const fileName = `slide-${Date.now()}-${index}.jpeg`
+					const destPath = path.join(PROCESSED_DIR, fileName)
+					fs.writeFileSync(destPath, result.buffer)
+					url = `/uploads/processed/${fileName}`
+				}
+
+				this.cleanup(localPath)
+
+				return {
+					public_id: publicId,
+					url,
+				}
+			})
+		)
+	}
+
+	private classifyIntent(product: Product): Intent {
+		if (product.offer_label || (product.compare_at_price && product.compare_at_price > product.price)) return 'SELL'
+		if (product.highlights && product.highlights.length > 0) return 'VALUE'
+		return 'ENGAGEMENT'
+	}
+
+	private async downloadAllImages(imageUrls: string[]): Promise<string[]> {
+		return Promise.all(imageUrls.map((url, i) => this.downloadImage(url, `slide-${i}`)))
+	}
+
+	private downloadImage(imageUrl: string, prefix: string): Promise<string> {
+		return new Promise((resolve, reject) => {
+			const filePath = path.join(TMP_DIR, `${prefix}-${Date.now()}.jpeg`)
+			const file = fs.createWriteStream(filePath)
+			const client = imageUrl.startsWith('https') ? https : http
+
+			client.get(imageUrl, (response) => {
+				if (response.statusCode && response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+					file.close()
+					if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
+					return resolve(this.downloadImage(response.headers.location, prefix))
+				}
+				response.pipe(file)
+				file.on('finish', () => { file.close(); resolve(filePath) })
+			}).on('error', (err) => {
+				file.close()
+				if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
+				reject(new BadRequestError(`Failed to download image: ${err.message}`))
+			})
+		})
+	}
+
+	private cleanup(...paths: string[]) {
+		for (const p of paths) {
+			try { if (fs.existsSync(p)) fs.unlinkSync(p) } catch { /* non-critical */ }
+		}
+	}
+}
+
+export const contentService = new ContentService()
