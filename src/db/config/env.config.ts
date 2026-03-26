@@ -30,4 +30,8 @@ export const env = Object.freeze({
 		apiKey: process.env.CLOUDINARY_API_KEY || '',
 		apiSecret: process.env.CLOUDINARY_API_SECRET || '',
 	},
+	instagram: {
+		appId: process.env.INSTAGRAM_APP_ID || '',
+		appSecret: process.env.INSTAGRAM_APP_SECRET || '',
+	},
 })

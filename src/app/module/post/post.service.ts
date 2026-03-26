@@ -5,6 +5,7 @@ import User from '../user/user.model'
 import Product from '../product/product.model'
 import { IServiceResponse } from '../../interfaces/IServiceResponse'
 import { NotFoundError, BadRequestError } from '../../errors/api-errors'
+import { instagramService } from '../instagram/instagram.service'
 
 const POST_INCLUDES = [
 	{
@@ -186,11 +187,10 @@ class PostService {
 	}
 
 	/**
-	 * Publish an approved post.
-	 * APPROVED → PUBLISHING → (webhook confirms) → PUBLISHED
-	 * For now: marks as PUBLISHED. Outstand.so integration will handle actual platform publishing.
+	 * Publish an approved post to its target platforms.
+	 * APPROVED → PUBLISHED
 	 */
-	async publish(id: string): Promise<IServiceResponse> {
+	async publish(id: string, userId: string): Promise<IServiceResponse> {
 		const post = await Post.findByPk(id)
 
 		if (!post) throw new NotFoundError('Post not found')
@@ -199,12 +199,19 @@ class PostService {
 			throw new BadRequestError(`Cannot publish — post is currently '${post.status}'. Only APPROVED posts can be published.`)
 		}
 
-		// TODO: Call Outstand.so API to publish to platforms
-		// For now, mark as PUBLISHED directly
-		await post.update({
-			status: 'PUBLISHED',
-			published_at: new Date(),
-		})
+		const platforms = post.platforms || []
+
+		// Publish to Instagram if it's a target platform
+		if (platforms.includes('instagram')) {
+			await instagramService.publishPost(id, userId)
+			// publishPost already updates status to PUBLISHED
+		} else {
+			// For other platforms, mark as PUBLISHED directly
+			await post.update({
+				status: 'PUBLISHED',
+				published_at: new Date(),
+			})
+		}
 
 		const updated = await Post.findByPk(id, { include: POST_INCLUDES })
 

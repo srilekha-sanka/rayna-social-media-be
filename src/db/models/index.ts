@@ -6,5 +6,6 @@ import Product from '../../app/module/product/product.model'
 import MediaAsset from '../../app/module/media-asset/media-asset.model'
 import Campaign from '../../app/module/campaign/campaign.model'
 import Post from '../../app/module/post/post.model'
+import InstagramCredential from '../../app/module/instagram/instagram.model'
 
-export { User, Role, Resource, RolePermission, Product, MediaAsset, Campaign, Post }
+export { User, Role, Resource, RolePermission, Product, MediaAsset, Campaign, Post, InstagramCredential }

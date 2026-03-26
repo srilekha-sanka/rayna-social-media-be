@@ -105,7 +105,8 @@ class PostController extends ResponseService {
 
 	publish = async (req: Request, res: Response, next: NextFunction) => {
 		try {
-			const { statusCode, payload, message } = await postService.publish(req.params.id)
+			const userId = req.user.userId
+			const { statusCode, payload, message } = await postService.publish(req.params.id, userId)
 			return this.sendResponse(res, statusCode, payload, message)
 		} catch (err) {
 			next(err)

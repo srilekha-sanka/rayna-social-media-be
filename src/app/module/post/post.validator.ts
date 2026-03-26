@@ -32,5 +32,5 @@ export const rejectPostSchema = Joi.object({
 })
 
 export const approvePostSchema = Joi.object({
-	note: Joi.string().optional().trim(),
+	note: Joi.string().optional().allow('', null).trim(),
 })
