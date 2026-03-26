@@ -256,17 +256,15 @@ class ImageOverlayService {
 			)
 		}
 
-		// CTA button (orange fill + white border)
+		// CTA button (solid orange fill, rounded, no border)
 		if (config.ctaText) {
 			const label = config.ctaText.toUpperCase()
 			const ctaTextW = this.estimateTextWidth(label, ctaFontSize, true)
-			const ctaPadX = Math.round(ctaH * 0.9)
+			const ctaPadX = Math.round(ctaH * 1.1)
 			const ctaW = ctaTextW + ctaPadX * 2
-			const border = Math.round(ctaH * 0.06)
+			const ctaBtnRadius = Math.round(ctaH * 0.15)
 
-			els.push(`<rect x="${pad}" y="${ctaY}" width="${ctaW}" height="${ctaH}" rx="${ctaRadius}" ry="${ctaRadius}" fill="none" stroke="#FFFFFF" stroke-width="${border}"/>`)
-			const inset = border
-			els.push(`<rect x="${pad + inset}" y="${ctaY + inset}" width="${ctaW - inset * 2}" height="${ctaH - inset * 2}" rx="${Math.max(1, ctaRadius - inset)}" ry="${Math.max(1, ctaRadius - inset)}" fill="${accent}"/>`)
+			els.push(`<rect x="${pad}" y="${ctaY}" width="${ctaW}" height="${ctaH}" rx="${ctaBtnRadius}" ry="${ctaBtnRadius}" fill="${accent}"/>`)
 			els.push(
 				`<text x="${pad + ctaW / 2}" y="${ctaY + ctaH * 0.66}"` +
 				` font-family="${FONT_BODY}"` +
