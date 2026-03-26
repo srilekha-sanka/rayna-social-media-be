@@ -188,14 +188,14 @@ class ImageOverlayService {
 		const els: string[] = []
 
 		// Font sizing
-		const titleSize = Math.round(h * 0.042)
-		const titleLH = Math.round(titleSize * 1.2)
-		const subtitleSize = Math.round(h * 0.022)
-		const subtitleLH = Math.round(subtitleSize * 1.5)
-		const ctaFontSize = Math.round(h * 0.018)
-		const ctaH = Math.round(h * 0.038)
+		const titleSize = Math.round(h * 0.05)
+		const titleLH = Math.round(titleSize * 1.15)
+		const subtitleSize = Math.round(h * 0.023)
+		const subtitleLH = Math.round(subtitleSize * 1.45)
+		const ctaFontSize = Math.round(h * 0.019)
+		const ctaH = Math.round(h * 0.04)
 		const ctaRadius = Math.round(ctaH * 0.18)
-		const gap = Math.round(h * 0.014)
+		const gap = Math.round(h * 0.016)
 
 		const titleLines = config.title ? this.wrapText(config.title, maxTextW, titleSize, true) : []
 		const subtitleLines = config.subtitle ? this.wrapText(config.subtitle, maxTextW, subtitleSize, false) : []
@@ -249,7 +249,7 @@ class ImageOverlayService {
 				`<text x="${pad}" y="${titleStartY}"` +
 				` font-family="${FONT_TITLE}"` +
 				` font-size="${titleSize}"` +
-				` font-weight="700"` +
+				` font-weight="800"` +
 				` fill="#FFFFFF"` +
 				` letter-spacing="0.5"` +
 				`>${tspans}</text>`
@@ -304,8 +304,8 @@ class ImageOverlayService {
 	private svgMinimalText(w: number, h: number, config: OverlayConfig): string {
 		const els: string[] = []
 		const pad = Math.round(w * 0.08)
-		const fontSize = Math.round(h * 0.04)
-		const lineHeight = Math.round(fontSize * 1.2)
+		const fontSize = Math.round(h * 0.045)
+		const lineHeight = Math.round(fontSize * 1.15)
 		const maxTextW = w - pad * 2
 
 		els.push(
@@ -329,7 +329,7 @@ class ImageOverlayService {
 				`<text x="${w / 2}" y="${startY}"` +
 				` font-family="${FONT_TITLE}"` +
 				` font-size="${fontSize}"` +
-				` font-weight="700"` +
+				` font-weight="800"` +
 				` fill="#FFFFFF"` +
 				` text-anchor="middle"` +
 				` letter-spacing="0.5"` +
