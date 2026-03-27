@@ -1,10 +1,5 @@
 import Joi from 'joi'
 
-export const saveCredentialsSchema = Joi.object({
-	access_token: Joi.string().required().trim(),
-	ig_user_id: Joi.string().required().trim(),
-})
-
 export const publishPostSchema = Joi.object({
 	image_url: Joi.string().uri().optional(),
 	video_url: Joi.string().uri().optional(),

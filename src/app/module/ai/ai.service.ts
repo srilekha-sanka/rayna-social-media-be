@@ -203,6 +203,10 @@ Design a ${input.slide_count}-slide carousel that makes someone book this experi
 		return { statusCode: 200, payload: result, message: 'Carousel content generated successfully' }
 	}
 
+	async callOpenAIRaw<T = any>(systemPrompt: string, userPrompt: string): Promise<T> {
+		return this.callOpenAI<T>(systemPrompt, userPrompt)
+	}
+
 	private async callOpenAI<T = any>(systemPrompt: string, userPrompt: string): Promise<T> {
 		const response = await openai.chat.completions.create({
 			model: env.openai.model,
