@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express'
 import { contentStudioService } from './content-studio.service'
 import {
 	generatePlanSchema,
+	generateEntriesSchema,
 	updatePlanSchema,
 	quickCreatePlanSchema,
 	createEntrySchema,
@@ -24,6 +25,26 @@ class ContentStudioController extends ResponseService {
 			const { error, value } = generatePlanSchema.validate(req.body, { abortEarly: false, stripUnknown: true })
 			if (error) throw new BadRequestError(error.details.map((d) => d.message).join(', '))
 			const { statusCode, payload, message } = await contentStudioService.generatePlan(value, req.user.userId)
+			return this.sendResponse(res, statusCode, payload, message)
+		} catch (err) {
+			next(err)
+		}
+	}
+
+	generateEntries = async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			const { error, value } = generateEntriesSchema.validate(req.body, { abortEarly: false, stripUnknown: true })
+			if (error) throw new BadRequestError(error.details.map((d) => d.message).join(', '))
+			const { statusCode, payload, message } = await contentStudioService.generateEntriesForPlan(req.params.id, value)
+			return this.sendResponse(res, statusCode, payload, message)
+		} catch (err) {
+			next(err)
+		}
+	}
+
+	getJobStatus = async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			const { statusCode, payload, message } = await contentStudioService.getJobStatus(req.params.jobId)
 			return this.sendResponse(res, statusCode, payload, message)
 		} catch (err) {
 			next(err)

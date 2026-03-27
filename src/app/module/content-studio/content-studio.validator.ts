@@ -34,6 +34,11 @@ export const generatePlanSchema = Joi.object({
 	include_festivals: Joi.boolean().default(true),
 	include_engagement: Joi.boolean().default(true),
 	posts_per_day: Joi.number().integer().min(1).max(5).default(1),
+	tone: Joi.string().optional().trim().valid('professional', 'casual', 'luxury', 'adventurous', 'friendly', 'urgency').default('adventurous'),
+	target_audience: Joi.string().optional().trim().default('tourists and residents in UAE aged 20-45'),
+	primary_goal: Joi.string().optional().trim().valid('bookings', 'engagement', 'brand_awareness', 'followers').default('bookings'),
+	region: Joi.string().optional().trim().default('UAE'),
+	special_notes: Joi.string().optional().allow('').trim(),
 }).custom((value, helpers) => {
 	if (new Date(value.start_date) > new Date(value.end_date)) {
 		return helpers.error('any.invalid', { message: 'start_date must be before end_date' })
@@ -43,6 +48,20 @@ export const generatePlanSchema = Joi.object({
 		return helpers.error('any.invalid', { message: 'Plan duration cannot exceed 90 days' })
 	}
 	return value
+})
+
+export const generateEntriesSchema = Joi.object({
+	platforms: Joi.array().items(Joi.string().valid(...VALID_PLATFORMS)).min(1).required(),
+	product_ids: Joi.array().items(Joi.string().uuid()).optional(),
+	include_festivals: Joi.boolean().default(true),
+	include_engagement: Joi.boolean().default(true),
+	posts_per_day: Joi.number().integer().min(1).max(5).default(1),
+	tone: Joi.string().optional().trim().valid('professional', 'casual', 'luxury', 'adventurous', 'friendly', 'urgency').default('adventurous'),
+	target_audience: Joi.string().optional().trim().default('tourists and residents in UAE aged 20-45'),
+	primary_goal: Joi.string().optional().trim().valid('bookings', 'engagement', 'brand_awareness', 'followers').default('bookings'),
+	region: Joi.string().optional().trim().default('UAE'),
+	special_notes: Joi.string().optional().allow('').trim(),
+	skip_existing_dates: Joi.boolean().default(true),
 })
 
 export const quickCreatePlanSchema = Joi.object({
