@@ -3,6 +3,7 @@ import Post from './post.model'
 import Campaign from '../campaign/campaign.model'
 import User from '../user/user.model'
 import Product from '../product/product.model'
+import CalendarEntry from '../content-studio/calendar-entry.model'
 import { IServiceResponse } from '../../interfaces/IServiceResponse'
 import { NotFoundError, BadRequestError } from '../../errors/api-errors'
 import { instagramService } from '../instagram/instagram.service'
@@ -128,6 +129,10 @@ class PostService {
 
 		await post.update({ status: 'PENDING_REVIEW' })
 
+		if (post.calendar_entry_id) {
+			await CalendarEntry.update({ status: 'IN_REVIEW' }, { where: { id: post.calendar_entry_id } })
+		}
+
 		const updated = await Post.findByPk(id, { include: POST_INCLUDES })
 
 		return { statusCode: 200, payload: updated, message: 'Post submitted for review' }
@@ -152,6 +157,10 @@ class PostService {
 			approval_note: note || null,
 			rejection_reason: null,
 		})
+
+		if (post.calendar_entry_id) {
+			await CalendarEntry.update({ status: 'READY' }, { where: { id: post.calendar_entry_id } })
+		}
 
 		const updated = await Post.findByPk(id, { include: POST_INCLUDES })
 
@@ -180,6 +189,10 @@ class PostService {
 			approved_by: adminId,
 			rejection_reason: reason.trim(),
 		})
+
+		if (post.calendar_entry_id) {
+			await CalendarEntry.update({ status: 'COMPOSING' }, { where: { id: post.calendar_entry_id } })
+		}
 
 		const updated = await Post.findByPk(id, { include: POST_INCLUDES })
 
@@ -213,6 +226,10 @@ class PostService {
 			})
 		}
 
+		if (post.calendar_entry_id) {
+			await CalendarEntry.update({ status: 'PUBLISHED' }, { where: { id: post.calendar_entry_id } })
+		}
+
 		const updated = await Post.findByPk(id, { include: POST_INCLUDES })
 
 		return { statusCode: 200, payload: updated, message: 'Post published successfully' }
@@ -241,6 +258,10 @@ class PostService {
 			status: 'SCHEDULED',
 			scheduled_at: scheduleDate,
 		})
+
+		if (post.calendar_entry_id) {
+			await CalendarEntry.update({ status: 'SCHEDULED' }, { where: { id: post.calendar_entry_id } })
+		}
 
 		const updated = await Post.findByPk(id, { include: POST_INCLUDES })
 

@@ -9,6 +9,7 @@ type PostStatus = 'DRAFT' | 'PENDING_REVIEW' | 'APPROVED' | 'SCHEDULED' | 'PUBLI
 
 interface PostAttributes extends BaseAttributes {
 	id: string
+	calendar_entry_id: string | null
 	campaign_id: string | null
 	author_id: string
 	base_content: string | null
@@ -28,6 +29,7 @@ interface PostCreationAttributes
 	extends Optional<
 		PostAttributes,
 		| BaseModelType
+		| 'calendar_entry_id'
 		| 'campaign_id'
 		| 'base_content'
 		| 'hashtags'
@@ -48,6 +50,12 @@ interface PostCreationAttributes
 	timestamps: true,
 })
 class Post extends BaseModel<PostAttributes, PostCreationAttributes> {
+	@Column({
+		type: DataType.UUID,
+		allowNull: true,
+	})
+	calendar_entry_id?: string
+
 	@ForeignKey(() => Campaign)
 	@Column({
 		type: DataType.UUID,

@@ -7,7 +7,7 @@ import {
 	quickCreatePlanSchema,
 	createEntrySchema,
 	updateEntrySchema,
-	bulkUpdateEntriesSchema,
+	composeEntrySchema,
 	calendarQuerySchema,
 } from './content-studio.validator'
 import ResponseService from '../../utils/response.service'
@@ -143,6 +143,68 @@ class ContentStudioController extends ResponseService {
 		}
 	}
 
+	// --- Review Queue ---
+
+	getReviewQueue = async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			const query = {
+				page: Math.max(1, parseInt(req.query.page as string, 10) || 1),
+				limit: Math.min(100, Math.max(1, parseInt(req.query.limit as string, 10) || 20)),
+				platform: req.query.platform as string | undefined,
+				content_plan_id: req.query.content_plan_id as string | undefined,
+			}
+			const { statusCode, payload, message } = await contentStudioService.getReviewQueue(query)
+			return this.sendResponse(res, statusCode, payload, message)
+		} catch (err) {
+			next(err)
+		}
+	}
+
+	// --- Scheduling ---
+
+	getSuggestedTimes = async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			const date = req.query.date as string
+			const platform = req.query.platform as string
+			if (!date || !platform) throw new BadRequestError('date and platform query params are required')
+			const { statusCode, payload, message } = await contentStudioService.getSuggestedTimes({ date, platform })
+			return this.sendResponse(res, statusCode, payload, message)
+		} catch (err) {
+			next(err)
+		}
+	}
+
+	// --- Post Composer ---
+
+	composeEntry = async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			const { error, value } = composeEntrySchema.validate(req.body, { abortEarly: false, stripUnknown: true })
+			if (error) throw new BadRequestError(error.details.map((d) => d.message).join(', '))
+			const { statusCode, payload, message } = await contentStudioService.composeEntry(req.params.id, req.user.userId, value)
+			return this.sendResponse(res, statusCode, payload, message)
+		} catch (err) {
+			next(err)
+		}
+	}
+
+	generatePostContent = async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			const { statusCode, payload, message } = await contentStudioService.generatePostContent(req.params.id)
+			return this.sendResponse(res, statusCode, payload, message)
+		} catch (err) {
+			next(err)
+		}
+	}
+
+	previewPost = async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			const { statusCode, payload, message } = await contentStudioService.previewPost(req.params.id)
+			return this.sendResponse(res, statusCode, payload, message)
+		} catch (err) {
+			next(err)
+		}
+	}
+
 	// --- Calendar Entries ---
 
 	getCalendar = async (req: Request, res: Response, next: NextFunction) => {
@@ -181,28 +243,6 @@ class ContentStudioController extends ResponseService {
 	deleteEntry = async (req: Request, res: Response, next: NextFunction) => {
 		try {
 			const { statusCode, payload, message } = await contentStudioService.deleteEntry(req.params.id)
-			return this.sendResponse(res, statusCode, payload, message)
-		} catch (err) {
-			next(err)
-		}
-	}
-
-	bulkUpdateEntries = async (req: Request, res: Response, next: NextFunction) => {
-		try {
-			const { error, value } = bulkUpdateEntriesSchema.validate(req.body, { abortEarly: false, stripUnknown: true })
-			if (error) throw new BadRequestError(error.details.map((d) => d.message).join(', '))
-			const { statusCode, payload, message } = await contentStudioService.bulkUpdateEntries(value.entry_ids, value.status)
-			return this.sendResponse(res, statusCode, payload, message)
-		} catch (err) {
-			next(err)
-		}
-	}
-
-	linkToPost = async (req: Request, res: Response, next: NextFunction) => {
-		try {
-			const { post_id } = req.body
-			if (!post_id) throw new BadRequestError('post_id is required')
-			const { statusCode, payload, message } = await contentStudioService.linkEntryToPost(req.params.id, post_id)
 			return this.sendResponse(res, statusCode, payload, message)
 		} catch (err) {
 			next(err)

@@ -24,12 +24,21 @@ contentStudioRouter.post('/plans/:id/submit-review', controller.submitForReview)
 contentStudioRouter.post('/plans/:id/approve', controller.approvePlan)
 contentStudioRouter.post('/plans/:id/reject', controller.rejectPlan)
 
+// Review Queue
+contentStudioRouter.get('/review-queue', controller.getReviewQueue)
+
+// Scheduling
+contentStudioRouter.get('/suggested-times', controller.getSuggestedTimes)
+
+// Post Composer — compose entry into post, generate content, preview
+contentStudioRouter.post('/entries/:id/compose', controller.composeEntry)
+contentStudioRouter.post('/entries/:id/generate-content', controller.generatePostContent)
+contentStudioRouter.get('/posts/:id/preview', controller.previewPost)
+
 // Calendar Entries
 contentStudioRouter.get('/calendar', controller.getCalendar)
 contentStudioRouter.post('/entries', controller.createEntry)
 contentStudioRouter.patch('/entries/:id', controller.updateEntry)
 contentStudioRouter.delete('/entries/:id', controller.deleteEntry)
-contentStudioRouter.post('/entries/bulk-update', controller.bulkUpdateEntries)
-contentStudioRouter.post('/entries/:id/link-post', controller.linkToPost)
 
 export { contentStudioRouter }

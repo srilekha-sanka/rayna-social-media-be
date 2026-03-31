@@ -24,6 +24,7 @@ type JobStatus = 'PROCESSING' | 'COMPLETED' | 'FAILED'
 interface GenerateCarouselInput {
 	product_id: string
 	campaign_id?: string
+	calendar_entry_id?: string
 	platform: string
 	slide_count?: number
 	intent?: Intent
@@ -33,6 +34,7 @@ interface GenerateCarouselInput {
 interface GenerateReelInput {
 	product_id: string
 	campaign_id?: string
+	calendar_entry_id?: string
 	platform: string
 	slide_duration?: number
 	transition_duration?: number
@@ -115,6 +117,51 @@ class ContentService {
 		}
 	}
 
+	// ── Public: Process product images with overlays (used by content-studio compose) ──
+
+	async processProductMedia(input: {
+		product: Product
+		platform: string
+		slide_count?: number
+		intent?: Intent
+		aspect_ratio?: AspectRatio
+	}): Promise<{ media_urls: string[]; ai_content: { caption: string; hashtags: string[]; cta: string } }> {
+		const { product, platform } = input
+		if (!product.image_urls?.length) throw new BadRequestError('Product has no images')
+
+		const slideCount = Math.min(input.slide_count || product.image_urls.length, product.image_urls.length, 10)
+		const intent = input.intent || this.classifyIntent(product)
+		const priceLabel = `${product.currency} ${product.price}`
+
+		const [aiContent, downloadedImages] = await Promise.all([
+			aiService.generateCarouselContent({
+				product_name: product.name,
+				product_description: product.short_description || product.description,
+				price: priceLabel,
+				offer: product.offer_label || undefined,
+				intent, platform,
+				slide_count: slideCount,
+			}),
+			this.downloadAllImages(product.image_urls.slice(0, slideCount)),
+		])
+
+		const carouselData = aiContent.payload as {
+			slides: Array<{ overlay_text: string; cta_text: string; subtitle?: string }>
+			caption: string
+			hashtags: string[]
+			cta: string
+		}
+
+		const processedSlides = await this.processSlides(downloadedImages, carouselData.slides, {
+			price: priceLabel, offerLabel: product.offer_label || undefined,
+		}, input.aspect_ratio || 'auto')
+
+		return {
+			media_urls: processedSlides.map((s) => s.url),
+			ai_content: { caption: carouselData.caption, hashtags: carouselData.hashtags, cta: carouselData.cta },
+		}
+	}
+
 	// ── Private: Carousel Processing ─────────────────────────────────
 
 	private async processCarousel(jobId: string, input: GenerateCarouselInput, product: Product, authorId: string) {
@@ -147,6 +194,7 @@ class ContentService {
 		}, input.aspect_ratio || 'auto')
 
 		const post = await Post.create({
+			calendar_entry_id: input.calendar_entry_id || null,
 			campaign_id: campaign_id || null,
 			author_id: authorId,
 			base_content: carouselData.caption,
@@ -206,6 +254,7 @@ class ContentService {
 		const videoUrl = slideshow.secure_url || slideshow.url || null
 
 		const post = await Post.create({
+			calendar_entry_id: input.calendar_entry_id || null,
 			campaign_id: input.campaign_id || null,
 			author_id: authorId,
 			base_content: `${product.name} — Reel`,

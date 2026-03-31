@@ -7,6 +7,9 @@ import Brand from '../brand/brand.model'
 
 export type ContentPlanStatus = 'DRAFT' | 'PENDING_REVIEW' | 'APPROVED' | 'ACTIVE' | 'COMPLETED'
 
+export const VALID_POST_TYPES = ['reel', 'image', 'carousel', 'cinematic_video', 'story', 'text'] as const
+export type PostType = (typeof VALID_POST_TYPES)[number]
+
 interface ContentPlanAttributes extends BaseAttributes {
 	id: string
 	name: string
@@ -14,6 +17,8 @@ interface ContentPlanAttributes extends BaseAttributes {
 	start_date: Date
 	end_date: Date
 	status: ContentPlanStatus
+	language: string
+	post_types: PostType[]
 	generation_config: object | null
 	created_by: string
 	approved_by: string | null
@@ -21,7 +26,7 @@ interface ContentPlanAttributes extends BaseAttributes {
 }
 
 interface ContentPlanCreationAttributes
-	extends Optional<ContentPlanAttributes, BaseModelType | 'brand_id' | 'status' | 'generation_config' | 'approved_by' | 'approved_at'> {}
+	extends Optional<ContentPlanAttributes, BaseModelType | 'brand_id' | 'status' | 'language' | 'post_types' | 'generation_config' | 'approved_by' | 'approved_at'> {}
 
 @Table({
 	tableName: 'content_plans',
@@ -63,6 +68,20 @@ class ContentPlan extends BaseModel<ContentPlanAttributes, ContentPlanCreationAt
 		defaultValue: 'DRAFT',
 	})
 	status!: ContentPlanStatus
+
+	@Column({
+		type: DataType.STRING(50),
+		allowNull: false,
+		defaultValue: 'english',
+	})
+	language!: string
+
+	@Column({
+		type: DataType.ARRAY(DataType.STRING(50)),
+		allowNull: false,
+		defaultValue: VALID_POST_TYPES,
+	})
+	post_types!: PostType[]
 
 	@Column({
 		type: DataType.JSONB,

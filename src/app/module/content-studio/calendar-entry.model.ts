@@ -1,14 +1,14 @@
-import { Table, Column, DataType, ForeignKey, BelongsTo } from 'sequelize-typescript'
+import { Table, Column, DataType, ForeignKey, BelongsTo, HasOne } from 'sequelize-typescript'
 import { Optional } from 'sequelize'
 import BaseModel from '../../utils/base.model'
 import { BaseAttributes, BaseModelType } from '../../interfaces/BaseAttributes'
-import ContentPlan from './content-plan.model'
+import ContentPlan, { PostType, VALID_POST_TYPES } from './content-plan.model'
 import Campaign from '../campaign/campaign.model'
 import Product from '../product/product.model'
 import Post from '../post/post.model'
 
 export type EntryContentType = 'PRODUCT_PROMO' | 'FESTIVAL_GREETING' | 'ENGAGEMENT' | 'VALUE' | 'BRAND_AWARENESS'
-export type EntryStatus = 'SUGGESTED' | 'APPROVED' | 'SCHEDULED' | 'PUBLISHED' | 'SKIPPED'
+export type EntryStatus = 'SUGGESTED' | 'APPROVED' | 'COMPOSING' | 'IN_REVIEW' | 'READY' | 'SCHEDULED' | 'PUBLISHED' | 'SKIPPED'
 
 interface CalendarEntryAttributes extends BaseAttributes {
 	id: string
@@ -17,20 +17,19 @@ interface CalendarEntryAttributes extends BaseAttributes {
 	title: string
 	description: string | null
 	content_type: EntryContentType
+	post_type: PostType
+	language: string
 	platform: string
 	product_id: string | null
 	campaign_id: string | null
-	post_id: string | null
-	media_urls: string[]
 	status: EntryStatus
-	scheduled_at: Date | null
 	ai_rationale: string | null
 }
 
 interface CalendarEntryCreationAttributes
 	extends Optional<
 		CalendarEntryAttributes,
-		BaseModelType | 'description' | 'product_id' | 'campaign_id' | 'post_id' | 'media_urls' | 'status' | 'scheduled_at' | 'ai_rationale'
+		BaseModelType | 'description' | 'post_type' | 'language' | 'product_id' | 'campaign_id' | 'status' | 'ai_rationale'
 	> {}
 
 @Table({
@@ -74,6 +73,20 @@ class CalendarEntry extends BaseModel<CalendarEntryAttributes, CalendarEntryCrea
 	content_type!: EntryContentType
 
 	@Column({
+		type: DataType.ENUM(...VALID_POST_TYPES),
+		allowNull: false,
+		defaultValue: 'image',
+	})
+	post_type!: PostType
+
+	@Column({
+		type: DataType.STRING(50),
+		allowNull: false,
+		defaultValue: 'english',
+	})
+	language!: string
+
+	@Column({
 		type: DataType.STRING(50),
 		allowNull: false,
 	})
@@ -99,35 +112,15 @@ class CalendarEntry extends BaseModel<CalendarEntryAttributes, CalendarEntryCrea
 	@BelongsTo(() => Campaign)
 	campaign!: Campaign
 
-	@ForeignKey(() => Post)
-	@Column({
-		type: DataType.UUID,
-		allowNull: true,
-	})
-	post_id?: string
-
-	@BelongsTo(() => Post)
+	@HasOne(() => Post, 'calendar_entry_id')
 	post!: Post
 
 	@Column({
-		type: DataType.ARRAY(DataType.STRING),
-		allowNull: false,
-		defaultValue: [],
-	})
-	media_urls!: string[]
-
-	@Column({
-		type: DataType.ENUM('SUGGESTED', 'APPROVED', 'SCHEDULED', 'PUBLISHED', 'SKIPPED'),
+		type: DataType.ENUM('SUGGESTED', 'APPROVED', 'COMPOSING', 'IN_REVIEW', 'READY', 'SCHEDULED', 'PUBLISHED', 'SKIPPED'),
 		allowNull: false,
 		defaultValue: 'SUGGESTED',
 	})
 	status!: EntryStatus
-
-	@Column({
-		type: DataType.DATE,
-		allowNull: true,
-	})
-	scheduled_at?: Date
 
 	@Column({
 		type: DataType.TEXT,

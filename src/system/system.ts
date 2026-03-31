@@ -11,7 +11,8 @@ import { logger } from '../app/common/logger/logging'
 import dbConnSeq from '../db/config/database.config'
 import { errorHandler } from '../app/middlewares/commonErrorHandler'
 import routes from '../app/routes'
-import { seedProducts, reseedProducts } from '../db/seeds/product.seed'
+import { seedProducts } from '../db/seeds/product.seed'
+import { postScheduler } from '../app/scheduler/post-scheduler'
 
 let routingUrl = '/api/v1'
 
@@ -48,13 +49,14 @@ export class System {
 				.sync({ alter: true, logging: false })
 				.then(async () => {
 					logger.info('📁[DB]: Database is connected and synced.')
-					await reseedProducts()
+					await seedProducts()
 					const port: number = process.env.PORT ? +process.env.PORT : 3000
 					app.listen(port, async () => {
 						logger.info('----------------------------------------------------------')
 						logger.info(`⚡️[server]: Server is running on ${port}`)
 						logger.info('Time : ' + new Date())
 						logger.info('----------------------------------------------------------')
+						postScheduler.start()
 					})
 				})
 				.catch((err) => {

@@ -4,6 +4,7 @@ const VALID_PLATFORMS = ['instagram', 'facebook', 'x', 'linkedin', 'tiktok', 'yo
 const VALID_STATUSES = ['DRAFT', 'PENDING_REVIEW', 'APPROVED', 'SCHEDULED', 'PUBLISHING', 'PUBLISHED', 'FAILED'] as const
 
 export const createPostSchema = Joi.object({
+	calendar_entry_id: Joi.string().uuid().optional(),
 	campaign_id: Joi.string().uuid().optional(),
 	base_content: Joi.string().optional().trim(),
 	hashtags: Joi.array().items(Joi.string()).optional().default([]),
