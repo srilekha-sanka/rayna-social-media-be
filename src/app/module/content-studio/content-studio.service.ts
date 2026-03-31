@@ -5,7 +5,6 @@ import Product from '../product/product.model'
 import Campaign from '../campaign/campaign.model'
 import Post from '../post/post.model'
 import User from '../user/user.model'
-import Brand from '../brand/brand.model'
 import { IServiceResponse } from '../../interfaces/IServiceResponse'
 import { NotFoundError, BadRequestError } from '../../errors/api-errors'
 import { aiService } from '../ai/ai.service'
@@ -15,7 +14,6 @@ import { contentService } from '../content/content.service'
 
 interface GeneratePlanInput {
 	name: string
-	brand_id?: string
 	start_date: string
 	end_date: string
 	platforms: string[]
@@ -32,7 +30,7 @@ interface GeneratePlanInput {
 	special_notes?: string
 }
 
-type GenerateEntriesInput = Omit<GeneratePlanInput, 'name' | 'start_date' | 'end_date' | 'brand_id'> & { skip_existing_dates: boolean }
+type GenerateEntriesInput = Omit<GeneratePlanInput, 'name' | 'start_date' | 'end_date'> & { skip_existing_dates: boolean }
 
 interface AIPlanEntry {
 	date: string
@@ -85,7 +83,6 @@ class ContentStudioService {
 
 		const plan = await ContentPlan.create({
 			name: input.name,
-			brand_id: input.brand_id || undefined,
 			start_date: new Date(input.start_date),
 			end_date: new Date(input.end_date),
 			language: input.language,
@@ -278,7 +275,6 @@ class ContentStudioService {
 			order: [['createdAt', 'DESC']],
 			include: [
 				{ model: User, as: 'creator', attributes: ['id', 'email', 'first_name'] },
-				{ model: Brand, attributes: ['id', 'name'] },
 			],
 		})
 
@@ -302,12 +298,11 @@ class ContentStudioService {
 		}
 	}
 
-	async quickCreatePlan(data: { name: string; start_date: string; end_date: string; brand_id?: string }, userId: string): Promise<IServiceResponse> {
+	async quickCreatePlan(data: { name: string; start_date: string; end_date: string }, userId: string): Promise<IServiceResponse> {
 		const plan = await ContentPlan.create({
 			name: data.name,
 			start_date: new Date(data.start_date),
 			end_date: new Date(data.end_date),
-			brand_id: data.brand_id || undefined,
 			status: 'ACTIVE',
 			created_by: userId,
 		} as any)
@@ -700,6 +695,140 @@ class ContentStudioService {
 		}
 	}
 
+	// --- Entry Detail (for schedule/publish panel) ---
+
+	async getEntryDetail(entryId: string): Promise<IServiceResponse> {
+		const entry = await CalendarEntry.findByPk(entryId, {
+			include: [
+				{ model: Product, attributes: ['id', 'name', 'price', 'offer_label', 'image_urls', 'category'] },
+				{ model: Campaign, attributes: ['id', 'name', 'type', 'goal'] },
+				{ model: Post, include: [{ model: User, as: 'author', attributes: ['id', 'email', 'first_name'] }] },
+				{ model: ContentPlan, attributes: ['id', 'name', 'status', 'generation_config'] },
+			],
+		})
+		if (!entry) throw new NotFoundError('Calendar entry not found')
+
+		// Backfill product
+		const json = entry.toJSON() as any
+		if (!json.product) {
+			const genConfig = json.content_plan?.generation_config as { product_ids?: string[] } | null
+			if (genConfig?.product_ids?.length) {
+				const product = await Product.findOne({
+					where: { id: { [Op.in]: genConfig.product_ids }, is_active: true },
+					attributes: ['id', 'name', 'price', 'offer_label', 'image_urls', 'category'],
+				})
+				if (product) json.product = product.toJSON()
+			}
+		}
+		json.media_urls = json.post?.media_urls?.length ? json.post.media_urls : json.product?.image_urls || []
+
+		// Auto-attach suggested times if entry is READY
+		let suggested_times = null
+		if (['READY', 'APPROVED'].includes(json.status) || json.post?.status === 'APPROVED') {
+			const { payload } = await this.getSuggestedTimes({ date: String(entry.date), platform: entry.platform })
+			suggested_times = payload.suggestions
+		}
+
+		return {
+			statusCode: 200,
+			payload: { ...json, suggested_times },
+			message: 'Entry detail fetched successfully',
+		}
+	}
+
+	// --- Bulk Schedule ---
+
+	async bulkSchedule(items: { post_id: string; scheduled_at: string }[]): Promise<IServiceResponse> {
+		const results: { post_id: string; status: string; scheduled_at?: string; error?: string }[] = []
+
+		for (const item of items) {
+			try {
+				const post = await Post.findByPk(item.post_id)
+				if (!post) {
+					results.push({ post_id: item.post_id, status: 'FAILED', error: 'Post not found' })
+					continue
+				}
+				if (post.status !== 'APPROVED') {
+					results.push({ post_id: item.post_id, status: 'FAILED', error: `Post is ${post.status}, must be APPROVED` })
+					continue
+				}
+
+				const scheduleDate = new Date(item.scheduled_at)
+				if (scheduleDate <= new Date()) {
+					results.push({ post_id: item.post_id, status: 'FAILED', error: 'scheduled_at must be in the future' })
+					continue
+				}
+
+				await post.update({ status: 'SCHEDULED', scheduled_at: scheduleDate })
+
+				if (post.calendar_entry_id) {
+					await CalendarEntry.update({ status: 'SCHEDULED' }, { where: { id: post.calendar_entry_id } })
+				}
+
+				results.push({ post_id: item.post_id, status: 'SCHEDULED', scheduled_at: scheduleDate.toISOString() })
+			} catch (err: any) {
+				results.push({ post_id: item.post_id, status: 'FAILED', error: err.message })
+			}
+		}
+
+		const scheduled = results.filter((r) => r.status === 'SCHEDULED').length
+		const failed = results.filter((r) => r.status === 'FAILED').length
+
+		return {
+			statusCode: 200,
+			payload: { results, summary: { total: items.length, scheduled, failed } },
+			message: `Bulk schedule complete: ${scheduled} scheduled, ${failed} failed`,
+		}
+	}
+
+	// --- Auto-Schedule (AI picks best times) ---
+
+	async autoSchedule(postIds: string[], date?: string): Promise<IServiceResponse> {
+		const results: { post_id: string; status: string; scheduled_at?: string; platform?: string; error?: string }[] = []
+
+		for (const postId of postIds) {
+			try {
+				const post = await Post.findByPk(postId)
+				if (!post) { results.push({ post_id: postId, status: 'FAILED', error: 'Post not found' }); continue }
+				if (post.status !== 'APPROVED') { results.push({ post_id: postId, status: 'FAILED', error: `Post is ${post.status}` }); continue }
+
+				const entry = post.calendar_entry_id
+					? await CalendarEntry.findByPk(post.calendar_entry_id)
+					: null
+
+				const postDate = date || (entry ? String(entry.date) : new Date().toISOString().split('T')[0])
+				const platform = entry?.platform || post.platforms?.[0] || 'instagram'
+
+				const { payload } = await this.getSuggestedTimes({ date: postDate, platform })
+				const bestSlot = payload.suggestions[0] // highest score
+
+				const scheduleDate = new Date(bestSlot.scheduled_at)
+				if (scheduleDate <= new Date()) {
+					// If best time today already passed, schedule for tomorrow same time
+					scheduleDate.setDate(scheduleDate.getDate() + 1)
+				}
+
+				await post.update({ status: 'SCHEDULED', scheduled_at: scheduleDate })
+
+				if (post.calendar_entry_id) {
+					await CalendarEntry.update({ status: 'SCHEDULED' }, { where: { id: post.calendar_entry_id } })
+				}
+
+				results.push({ post_id: postId, status: 'SCHEDULED', scheduled_at: scheduleDate.toISOString(), platform })
+			} catch (err: any) {
+				results.push({ post_id: postId, status: 'FAILED', error: err.message })
+			}
+		}
+
+		const scheduled = results.filter((r) => r.status === 'SCHEDULED').length
+
+		return {
+			statusCode: 200,
+			payload: { results, summary: { total: postIds.length, scheduled, failed: postIds.length - scheduled } },
+			message: `Auto-scheduled ${scheduled} post(s) at optimal times`,
+		}
+	}
+
 	// --- Calendar Entries ---
 
 	async getCalendar(query: CalendarQuery): Promise<IServiceResponse> {
@@ -817,7 +946,6 @@ class ContentStudioService {
 		const plan = await ContentPlan.findByPk(id, {
 			include: [
 				{ model: User, as: 'creator', attributes: ['id', 'email', 'first_name'] },
-				{ model: Brand, attributes: ['id', 'name'] },
 			],
 		})
 		if (!plan) throw new NotFoundError('Content plan not found')

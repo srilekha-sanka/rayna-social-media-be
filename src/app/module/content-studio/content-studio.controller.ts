@@ -174,6 +174,37 @@ class ContentStudioController extends ResponseService {
 		}
 	}
 
+	getEntryDetail = async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			const { statusCode, payload, message } = await contentStudioService.getEntryDetail(req.params.id)
+			return this.sendResponse(res, statusCode, payload, message)
+		} catch (err) {
+			next(err)
+		}
+	}
+
+	bulkSchedule = async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			const { items } = req.body
+			if (!items?.length) throw new BadRequestError('items array is required with { post_id, scheduled_at }')
+			const { statusCode, payload, message } = await contentStudioService.bulkSchedule(items)
+			return this.sendResponse(res, statusCode, payload, message)
+		} catch (err) {
+			next(err)
+		}
+	}
+
+	autoSchedule = async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			const { post_ids, date } = req.body
+			if (!post_ids?.length) throw new BadRequestError('post_ids array is required')
+			const { statusCode, payload, message } = await contentStudioService.autoSchedule(post_ids, date)
+			return this.sendResponse(res, statusCode, payload, message)
+		} catch (err) {
+			next(err)
+		}
+	}
+
 	// --- Post Composer ---
 
 	composeEntry = async (req: Request, res: Response, next: NextFunction) => {

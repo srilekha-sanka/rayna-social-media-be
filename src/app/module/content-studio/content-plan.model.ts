@@ -3,7 +3,6 @@ import { Optional } from 'sequelize'
 import BaseModel from '../../utils/base.model'
 import { BaseAttributes, BaseModelType } from '../../interfaces/BaseAttributes'
 import User from '../user/user.model'
-import Brand from '../brand/brand.model'
 
 export type ContentPlanStatus = 'DRAFT' | 'PENDING_REVIEW' | 'APPROVED' | 'ACTIVE' | 'COMPLETED'
 
@@ -13,7 +12,6 @@ export type PostType = (typeof VALID_POST_TYPES)[number]
 interface ContentPlanAttributes extends BaseAttributes {
 	id: string
 	name: string
-	brand_id: string | null
 	start_date: Date
 	end_date: Date
 	status: ContentPlanStatus
@@ -26,7 +24,7 @@ interface ContentPlanAttributes extends BaseAttributes {
 }
 
 interface ContentPlanCreationAttributes
-	extends Optional<ContentPlanAttributes, BaseModelType | 'brand_id' | 'status' | 'language' | 'post_types' | 'generation_config' | 'approved_by' | 'approved_at'> {}
+	extends Optional<ContentPlanAttributes, BaseModelType | 'status' | 'language' | 'post_types' | 'generation_config' | 'approved_by' | 'approved_at'> {}
 
 @Table({
 	tableName: 'content_plans',
@@ -39,16 +37,6 @@ class ContentPlan extends BaseModel<ContentPlanAttributes, ContentPlanCreationAt
 		allowNull: false,
 	})
 	name!: string
-
-	@ForeignKey(() => Brand)
-	@Column({
-		type: DataType.UUID,
-		allowNull: true,
-	})
-	brand_id?: string
-
-	@BelongsTo(() => Brand)
-	brand!: Brand
 
 	@Column({
 		type: DataType.DATEONLY,

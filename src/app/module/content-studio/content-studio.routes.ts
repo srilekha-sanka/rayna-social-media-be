@@ -27,8 +27,11 @@ contentStudioRouter.post('/plans/:id/reject', controller.rejectPlan)
 // Review Queue
 contentStudioRouter.get('/review-queue', controller.getReviewQueue)
 
-// Scheduling
+// Scheduling & Publishing
 contentStudioRouter.get('/suggested-times', controller.getSuggestedTimes)
+contentStudioRouter.get('/entries/:id/detail', controller.getEntryDetail)
+contentStudioRouter.post('/schedule/bulk', controller.bulkSchedule)
+contentStudioRouter.post('/schedule/auto', controller.autoSchedule)
 
 // Post Composer — compose entry into post, generate content, preview
 contentStudioRouter.post('/entries/:id/compose', controller.composeEntry)

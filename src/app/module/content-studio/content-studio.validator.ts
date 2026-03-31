@@ -28,7 +28,6 @@ const VALID_PLAN_STATUSES = ['DRAFT', 'PENDING_REVIEW', 'APPROVED', 'ACTIVE', 'C
 
 export const generatePlanSchema = Joi.object({
 	name: Joi.string().required().trim(),
-	brand_id: Joi.string().uuid().optional(),
 	start_date: Joi.string().isoDate().required(),
 	end_date: Joi.string().isoDate().required(),
 	platforms: Joi.array().items(Joi.string().valid(...VALID_PLATFORMS)).min(1).required(),
@@ -74,7 +73,6 @@ export const quickCreatePlanSchema = Joi.object({
 	name: Joi.string().required().trim(),
 	start_date: Joi.string().isoDate().required(),
 	end_date: Joi.string().isoDate().required(),
-	brand_id: Joi.string().uuid().optional(),
 }).custom((value, helpers) => {
 	if (new Date(value.start_date) > new Date(value.end_date)) {
 		return helpers.error('any.invalid', { message: 'start_date must be before end_date' })

@@ -8,7 +8,6 @@ import Product from '../../app/module/product/product.model'
 import MediaAsset from '../../app/module/media-asset/media-asset.model'
 import Campaign from '../../app/module/campaign/campaign.model'
 import Post from '../../app/module/post/post.model'
-import Brand from '../../app/module/brand/brand.model'
 import SocialAccount from '../../app/module/social-account/social-account.model'
 import ContentPlan from '../../app/module/content-studio/content-plan.model'
 import CalendarEntry from '../../app/module/content-studio/calendar-entry.model'
@@ -21,7 +20,7 @@ const sequelize = new Sequelize({
 	port: env.db.port,
 	dialect: 'postgres',
 	logging: env.nodeEnv === 'development' ? console.log : false,
-	models: [User, Role, Resource, RolePermission, Product, MediaAsset, Campaign, Post, Brand, SocialAccount, ContentPlan, CalendarEntry],
+	models: [User, Role, Resource, RolePermission, Product, MediaAsset, Campaign, Post, SocialAccount, ContentPlan, CalendarEntry],
 	define: {
 		timestamps: true,
 		underscored: true,

@@ -1,6 +1,5 @@
 import { WhereOptions } from 'sequelize'
 import SocialAccount from './social-account.model'
-import Brand from '../brand/brand.model'
 import User from '../user/user.model'
 import { outstandService } from '../outstand/outstand.service'
 import { IServiceResponse } from '../../interfaces/IServiceResponse'
@@ -8,7 +7,6 @@ import { NotFoundError, BadRequestError } from '../../errors/api-errors'
 import { logger } from '../../common/logger/logging'
 
 const ACCOUNT_INCLUDES = [
-	{ model: Brand, attributes: ['id', 'name', 'logo_url'] },
 	{ model: User, as: 'connector', attributes: ['id', 'email', 'first_name'] },
 ]
 
@@ -16,15 +14,9 @@ class SocialAccountService {
 	/**
 	 * Get OAuth URL from Outstand.so for a given platform.
 	 */
-	async getAuthUrl(data: { platform: string; brand_id: string; redirect_url?: string }, userId: string): Promise<IServiceResponse> {
-		const brand = await Brand.findByPk(data.brand_id)
-		if (!brand) {
-			throw new NotFoundError('Brand not found')
-		}
-
+	async getAuthUrl(data: { platform: string; redirect_url?: string }, userId: string): Promise<IServiceResponse> {
 		// Create a pending social account record
 		const account = await SocialAccount.create({
-			brand_id: data.brand_id,
 			platform: data.platform as any,
 			status: 'PENDING',
 			connected_by: userId,
@@ -54,21 +46,15 @@ class SocialAccountService {
 	 * Finalize OAuth callback — exchange code for account connection via Outstand.so.
 	 */
 	async finalizeConnection(
-		data: { platform: string; brand_id: string; code: string; state?: string },
+		data: { platform: string; code: string; state?: string },
 		userId: string
 	): Promise<IServiceResponse> {
-		const brand = await Brand.findByPk(data.brand_id)
-		if (!brand) {
-			throw new NotFoundError('Brand not found')
-		}
-
 		try {
 			const outstandAccount = await outstandService.finalizeConnection(data.code, data.platform)
 
-			// Check if account already exists for this platform + brand
+			// Check if account already exists for this platform
 			const existing = await SocialAccount.findOne({
 				where: {
-					brand_id: data.brand_id,
 					platform: data.platform,
 					outstand_account_id: outstandAccount.id,
 					is_active: true,
@@ -93,7 +79,6 @@ class SocialAccountService {
 			// Find the pending record or create a new one
 			let account = await SocialAccount.findOne({
 				where: {
-					brand_id: data.brand_id,
 					platform: data.platform,
 					status: 'PENDING',
 					connected_by: userId,
@@ -114,7 +99,6 @@ class SocialAccountService {
 				})
 			} else {
 				account = await SocialAccount.create({
-					brand_id: data.brand_id,
 					platform: data.platform as any,
 					outstand_account_id: outstandAccount.id,
 					display_name: outstandAccount.display_name,
@@ -141,16 +125,14 @@ class SocialAccountService {
 	async findAll(query: {
 		page: number
 		limit: number
-		brand_id?: string
 		platform?: string
 		status?: string
 	}): Promise<IServiceResponse> {
-		const { page, limit, brand_id, platform, status } = query
+		const { page, limit, platform, status } = query
 		const offset = (page - 1) * limit
 
 		const where: WhereOptions = { is_active: true }
 
-		if (brand_id) where.brand_id = brand_id
 		if (platform) where.platform = platform
 		if (status) where.status = status
 

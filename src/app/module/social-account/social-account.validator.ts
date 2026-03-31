@@ -18,7 +18,6 @@ export const getAuthUrlSchema = Joi.object({
 		.lowercase()
 		.valid(...VALID_PLATFORMS)
 		.required(),
-	brand_id: Joi.string().uuid().required(),
 	redirect_url: Joi.string().uri().optional(),
 })
 
@@ -27,7 +26,6 @@ export const finalizeConnectionSchema = Joi.object({
 		.lowercase()
 		.valid(...VALID_PLATFORMS)
 		.required(),
-	brand_id: Joi.string().uuid().required(),
 	code: Joi.string().required(),
 	state: Joi.string().optional(),
 })
@@ -37,7 +35,6 @@ export const disconnectSchema = Joi.object({
 })
 
 export const listAccountsQuerySchema = Joi.object({
-	brand_id: Joi.string().uuid().optional(),
 	platform: Joi.string()
 		.lowercase()
 		.valid(...VALID_PLATFORMS)
