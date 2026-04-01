@@ -11,6 +11,7 @@ import { contentRouter } from './module/content/content.routes'
 import { socialAccountRouter } from './module/social-account/social-account.routes'
 import { instagramRouter } from './module/instagram/instagram.routes'
 import { contentStudioRouter } from './module/content-studio/content-studio.routes'
+import freepikRouter from './module/freepik/freepik.routes'
 import { verifyToken } from './middlewares/verifyAuth'
 
 const routes = express.Router()
@@ -27,5 +28,6 @@ routes.use('/content', verifyToken, contentRouter)
 routes.use('/social-accounts', verifyToken, socialAccountRouter)
 routes.use('/instagram', verifyToken, instagramRouter)
 routes.use('/content-studio', verifyToken, contentStudioRouter)
+routes.use('/stock-media', verifyToken, freepikRouter)
 
 export default routes

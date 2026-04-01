@@ -10,6 +10,8 @@ import User from '../user/user.model'
 import { aiService } from '../ai/ai.service'
 import { imageOverlayService, AspectRatio } from '../image/image-overlay.service'
 import { cloudinaryService } from '../cloudinary/cloudinary.service'
+import { freepikService } from '../freepik/freepik.service'
+import CalendarEntry from '../content-studio/calendar-entry.model'
 import { IServiceResponse } from '../../interfaces/IServiceResponse'
 import { NotFoundError, BadRequestError } from '../../errors/api-errors'
 import { UPLOAD_DIR } from '../../config/upload.config'
@@ -331,6 +333,186 @@ class ContentService {
 				}
 			})
 		)
+	}
+
+	// ── Public: Process stock media images with optional overlay + AI caption ──
+
+	async processStockMedia(input: {
+		image_urls: string[]
+		entry: CalendarEntry
+		apply_overlay: boolean
+		generate_ai_caption: boolean
+		aspect_ratio?: AspectRatio
+	}): Promise<{ media_urls: string[]; ai_content?: { caption: string; hashtags: string[]; cta: string } }> {
+		const { image_urls, entry, apply_overlay, generate_ai_caption } = input
+
+		if (!image_urls.length) throw new BadRequestError('No stock image URLs provided')
+
+		const downloadedImages = await this.downloadAllImages(image_urls)
+
+		let mediaUrls: string[]
+
+		if (apply_overlay) {
+			// Generate minimal overlay texts from entry context
+			const overlayTexts = downloadedImages.map((_, index) => ({
+				overlay_text: index === 0 ? entry.title : '',
+				cta_text: index === 0 || index === downloadedImages.length - 1 ? 'Book Now' : '',
+				subtitle: index === 0 ? (entry.description?.slice(0, 60) || '') : undefined,
+			}))
+
+			const processedSlides = await this.processSlides(downloadedImages, overlayTexts, {
+				price: '', offerLabel: undefined,
+			}, input.aspect_ratio || 'auto')
+
+			mediaUrls = processedSlides.map((s) => s.url)
+		} else {
+			// No overlay — just upload to Cloudinary directly
+			mediaUrls = await Promise.all(
+				downloadedImages.map(async (localPath, index) => {
+					const buffer = fs.readFileSync(localPath)
+					let url: string
+					if (cloudinaryService.enabled) {
+						const uploaded = await cloudinaryService.uploadBuffer(buffer, { folder: 'rayna/stock' })
+						url = uploaded.secure_url
+					} else {
+						const fileName = `stock-${Date.now()}-${index}.jpeg`
+						const destPath = path.join(PROCESSED_DIR, fileName)
+						fs.writeFileSync(destPath, buffer)
+						url = `/uploads/processed/${fileName}`
+					}
+					this.cleanup(localPath)
+					return url
+				})
+			)
+		}
+
+		let aiContent: { caption: string; hashtags: string[]; cta: string } | undefined
+
+		if (generate_ai_caption) {
+			const result = await aiService.callOpenAIRaw<{ caption: string; hashtags: string[]; cta_text: string }>(`You are a social media copywriter for Rayna Tours, Dubai's top tours & activities company.
+
+RESPOND WITH VALID JSON ONLY:
+{"caption":"the full post caption","hashtags":["hashtag1","hashtag2"],"cta_text":"call to action"}
+
+RULES:
+- Platform: ${entry.platform}
+- Content type: ${entry.content_type}
+- Write an engaging, scroll-stopping caption
+- 10-15 relevant hashtags
+- Platform-appropriate CTA`, `Create post content for:
+Title: ${entry.title}
+Brief: ${entry.description || 'No specific brief'}
+Platform: ${entry.platform} | Type: ${entry.content_type}
+Note: Using stock/custom images, not product-specific content.`)
+
+			aiContent = { caption: result.caption, hashtags: result.hashtags, cta: result.cta_text }
+		}
+
+		return { media_urls: mediaUrls, ai_content: aiContent }
+	}
+
+	// ── Public: Generate AI images via Freepik and process with overlay ──
+
+	async processAIGeneratedMedia(input: {
+		entry: CalendarEntry
+		product?: Product
+		style: 'photo' | 'digital-art' | '3d' | 'painting'
+		additional_prompt?: string
+		num_images?: number
+		apply_overlay: boolean
+		aspect_ratio?: AspectRatio
+	}): Promise<{ media_urls: string[]; ai_content: { caption: string; hashtags: string[]; cta: string } }> {
+		const { entry, product, style, additional_prompt, apply_overlay } = input
+
+		// Build the image generation prompt from entry context
+		let imagePrompt = `Professional social media image for: ${entry.title}.`
+		if (entry.description) imagePrompt += ` ${entry.description}.`
+		if (product) imagePrompt += ` Product: ${product.name} — ${product.short_description || product.description || ''}.`
+		imagePrompt += ` Dubai tourism and travel context. High quality, vibrant, eye-catching.`
+		if (additional_prompt) imagePrompt += ` ${additional_prompt}`
+
+		// Map aspect ratio to Freepik size
+		const sizeMap: Record<string, 'square_1_1' | 'portrait_3_4' | 'landscape_4_3'> = {
+			'1:1': 'square_1_1',
+			'4:5': 'portrait_3_4',
+			'1.91:1': 'landscape_4_3',
+		}
+		const size = sizeMap[input.aspect_ratio || ''] || 'square_1_1'
+
+		const imageBuffers = await freepikService.generateAIImage({
+			prompt: imagePrompt,
+			style,
+			size,
+			num_images: input.num_images || 1,
+		})
+
+		if (!imageBuffers.length) throw new BadRequestError('AI image generation returned no usable images')
+
+		// Save buffers to temp files for processing
+		const tempPaths = imageBuffers.map((buffer, i) => {
+			const tempPath = path.join(os.tmpdir(), 'rayna-processing', `ai-gen-${Date.now()}-${i}.png`)
+			fs.writeFileSync(tempPath, buffer)
+			return tempPath
+		})
+
+		let mediaUrls: string[]
+
+		if (apply_overlay) {
+			const overlayTexts = tempPaths.map((_, index) => ({
+				overlay_text: index === 0 ? entry.title : '',
+				cta_text: index === 0 || index === tempPaths.length - 1 ? 'Book Now' : '',
+				subtitle: index === 0 ? (entry.description?.slice(0, 60) || '') : undefined,
+			}))
+
+			const processedSlides = await this.processSlides(tempPaths, overlayTexts, {
+				price: product ? `${product.currency} ${product.price}` : '',
+				offerLabel: product?.offer_label || undefined,
+			}, input.aspect_ratio || 'auto')
+
+			mediaUrls = processedSlides.map((s) => s.url)
+		} else {
+			mediaUrls = await Promise.all(
+				tempPaths.map(async (tempPath, index) => {
+					const buffer = fs.readFileSync(tempPath)
+					let url: string
+					if (cloudinaryService.enabled) {
+						const uploaded = await cloudinaryService.uploadBuffer(buffer, { folder: 'rayna/ai-generated' })
+						url = uploaded.secure_url
+					} else {
+						const fileName = `ai-gen-${Date.now()}-${index}.png`
+						const destPath = path.join(PROCESSED_DIR, fileName)
+						fs.writeFileSync(destPath, buffer)
+						url = `/uploads/processed/${fileName}`
+					}
+					this.cleanup(tempPath)
+					return url
+				})
+			)
+		}
+
+		// Generate AI caption
+		const captionResult = await aiService.callOpenAIRaw<{ caption: string; hashtags: string[]; cta_text: string }>(`You are a social media copywriter for Rayna Tours, Dubai's top tours & activities company.
+
+RESPOND WITH VALID JSON ONLY:
+{"caption":"the full post caption","hashtags":["hashtag1","hashtag2"],"cta_text":"call to action"}
+
+RULES:
+- Platform: ${entry.platform}
+- Content type: ${entry.content_type}
+- Write an engaging, scroll-stopping caption
+- 10-15 relevant hashtags
+- Platform-appropriate CTA
+${product ? `- Product: ${product.name}, Price: ${product.currency} ${product.price}` : ''}`, `Create post content for:
+Title: ${entry.title}
+Brief: ${entry.description || 'No specific brief'}
+${product ? `Product: ${product.name}` : ''}
+Platform: ${entry.platform} | Type: ${entry.content_type}
+Note: Using AI-generated imagery.`)
+
+		return {
+			media_urls: mediaUrls,
+			ai_content: { caption: captionResult.caption, hashtags: captionResult.hashtags, cta: captionResult.cta_text },
+		}
 	}
 
 	private classifyIntent(product: Product): Intent {

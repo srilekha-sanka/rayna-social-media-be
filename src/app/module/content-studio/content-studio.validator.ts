@@ -119,10 +119,23 @@ export const updateEntrySchema = Joi.object({
 })
 
 export const composeEntrySchema = Joi.object({
+	content_source: Joi.string().valid('PRODUCT', 'STOCK', 'AI_GENERATED').default('PRODUCT'),
 	base_content: Joi.string().optional().allow('').trim(),
 	hashtags: Joi.array().items(Joi.string()).optional(),
 	cta_text: Joi.string().optional().allow('').trim(),
 	media_urls: Joi.array().items(Joi.string()).optional(),
+	// STOCK source fields
+	stock_image_urls: Joi.array().items(Joi.string().uri()).when('content_source', {
+		is: 'STOCK',
+		then: Joi.required(),
+		otherwise: Joi.optional(),
+	}),
+	apply_overlay: Joi.boolean().default(true),
+	generate_ai_caption: Joi.boolean().default(true),
+	// AI_GENERATED source fields
+	ai_image_style: Joi.string().valid('photo', 'digital-art', '3d', 'painting').default('photo'),
+	ai_image_prompt: Joi.string().optional().allow('').trim(),
+	num_images: Joi.number().integer().min(1).max(4).default(1),
 })
 
 export const calendarQuerySchema = Joi.object({

@@ -502,7 +502,18 @@ class ContentStudioService {
 
 	// --- Post Composer Flow ---
 
-	async composeEntry(entryId: string, userId: string, data?: { base_content?: string; hashtags?: string[]; cta_text?: string; media_urls?: string[] }): Promise<IServiceResponse> {
+	async composeEntry(
+		entryId: string,
+		userId: string,
+		data?: {
+			content_source?: 'PRODUCT' | 'STOCK' | 'AI_GENERATED'
+			base_content?: string; hashtags?: string[]; cta_text?: string; media_urls?: string[]
+			stock_image_urls?: string[]
+			apply_overlay?: boolean; generate_ai_caption?: boolean
+			ai_image_style?: 'photo' | 'digital-art' | '3d' | 'painting'
+			ai_image_prompt?: string; num_images?: number
+		},
+	): Promise<IServiceResponse> {
 		const entry = await CalendarEntry.findByPk(entryId, {
 			include: [
 				{ model: Product },
@@ -520,34 +531,77 @@ class ContentStudioService {
 			throw new BadRequestError('The parent plan must be approved before composing entries')
 		}
 
-		// If entry has no product but plan has product_ids, assign the first available product
-		const genConfig = entry.content_plan?.generation_config as { product_ids?: string[] } | null
-		if (!entry.product_id && genConfig?.product_ids?.length) {
-			const productIds = genConfig.product_ids
-			const product = await Product.findOne({ where: { id: { [Op.in]: productIds }, is_active: true } })
-			if (product) {
-				await entry.update({ product_id: product.id })
-				entry.product_id = product.id
-				entry.product = product
-			}
-		}
-
-		// If product was backfilled but not fully loaded (missing image_urls), reload it
-		if (entry.product_id && (!entry.product || !entry.product.image_urls)) {
-			entry.product = await Product.findByPk(entry.product_id) as Product
-		}
-
+		const contentSource = data?.content_source || 'PRODUCT'
 		let mediaUrls: string[] = data?.media_urls || []
 		let aiCaption = data?.base_content || undefined
 		let aiHashtags = data?.hashtags || []
 		let aiCta = data?.cta_text || undefined
 
-		// If product exists → process images with overlays + AI content
-		if (entry.product_id && entry.product?.image_urls?.length && !mediaUrls.length) {
-			const result = await contentService.processProductMedia({
-				product: entry.product,
-				platform: entry.platform,
-				slide_count: entry.post_type === 'image' ? 1 : undefined,
+		// ── PRODUCT source (existing flow) ──
+		if (contentSource === 'PRODUCT') {
+			// If entry has no product but plan has product_ids, assign the first available product
+			const genConfig = entry.content_plan?.generation_config as { product_ids?: string[] } | null
+			if (!entry.product_id && genConfig?.product_ids?.length) {
+				const productIds = genConfig.product_ids
+				const product = await Product.findOne({ where: { id: { [Op.in]: productIds }, is_active: true } })
+				if (product) {
+					await entry.update({ product_id: product.id })
+					entry.product_id = product.id
+					entry.product = product
+				}
+			}
+
+			if (entry.product_id && (!entry.product || !entry.product.image_urls)) {
+				entry.product = await Product.findByPk(entry.product_id) as Product
+			}
+
+			if (entry.product_id && entry.product?.image_urls?.length && !mediaUrls.length) {
+				const result = await contentService.processProductMedia({
+					product: entry.product,
+					platform: entry.platform,
+					slide_count: entry.post_type === 'image' ? 1 : undefined,
+				})
+
+				mediaUrls = result.media_urls
+				if (!aiCaption) aiCaption = result.ai_content.caption
+				if (!aiHashtags.length) aiHashtags = result.ai_content.hashtags
+				if (!aiCta) aiCta = result.ai_content.cta
+			}
+		}
+
+		// ── STOCK source ──
+		if (contentSource === 'STOCK') {
+			if (!data?.stock_image_urls?.length) {
+				throw new BadRequestError('stock_image_urls is required when content_source is STOCK')
+			}
+
+			const result = await contentService.processStockMedia({
+				image_urls: data.stock_image_urls,
+				entry,
+				apply_overlay: data.apply_overlay !== false,
+				generate_ai_caption: data.generate_ai_caption !== false,
+			})
+
+			mediaUrls = result.media_urls
+			if (result.ai_content && !aiCaption) aiCaption = result.ai_content.caption
+			if (result.ai_content && !aiHashtags.length) aiHashtags = result.ai_content.hashtags
+			if (result.ai_content && !aiCta) aiCta = result.ai_content.cta
+		}
+
+		// ── AI_GENERATED source ──
+		if (contentSource === 'AI_GENERATED') {
+			// Reload product for context if available
+			if (entry.product_id && (!entry.product || !entry.product.image_urls)) {
+				entry.product = await Product.findByPk(entry.product_id) as Product
+			}
+
+			const result = await contentService.processAIGeneratedMedia({
+				entry,
+				product: entry.product || undefined,
+				style: data?.ai_image_style || 'photo',
+				additional_prompt: data?.ai_image_prompt,
+				num_images: data?.num_images,
+				apply_overlay: data?.apply_overlay !== false,
 			})
 
 			mediaUrls = result.media_urls
@@ -556,7 +610,7 @@ class ContentStudioService {
 			if (!aiCta) aiCta = result.ai_content.cta
 		}
 
-		// Check for existing post — update it with media if it was created empty
+		// ── Create or update post draft ──
 		const existingPost = await Post.findOne({
 			where: { calendar_entry_id: entryId, is_active: true },
 			include: [
@@ -578,7 +632,7 @@ class ContentStudioService {
 
 			return {
 				statusCode: 200,
-				payload: { post: existingPost, entry },
+				payload: { post: existingPost, entry, content_source: contentSource },
 				message: Object.keys(updates).length ? 'Existing draft updated with processed media and AI content' : 'Existing draft returned',
 			}
 		}
@@ -606,8 +660,8 @@ class ContentStudioService {
 
 		return {
 			statusCode: 201,
-			payload: { post: full, entry },
-			message: 'Post composed with processed images and AI content',
+			payload: { post: full, entry, content_source: contentSource },
+			message: `Post composed via ${contentSource} source`,
 		}
 	}
 

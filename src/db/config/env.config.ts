@@ -34,4 +34,7 @@ export const env = Object.freeze({
 		appId: process.env.INSTAGRAM_APP_ID || '',
 		appSecret: process.env.INSTAGRAM_APP_SECRET || '',
 	},
+	freepik: {
+		apiKey: process.env.FREEPIK_API_KEY || '',
+	},
 })
