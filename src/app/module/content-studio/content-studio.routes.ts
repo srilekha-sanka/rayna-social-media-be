@@ -4,6 +4,10 @@ import ContentStudioController from './content-studio.controller'
 const controller = new ContentStudioController()
 const contentStudioRouter = Router()
 
+// Design Templates
+contentStudioRouter.get('/design-templates', controller.listDesignTemplates)
+contentStudioRouter.get('/design-templates/:id', controller.getDesignTemplate)
+
 // Jobs
 contentStudioRouter.get('/jobs/:jobId', controller.getJobStatus)
 

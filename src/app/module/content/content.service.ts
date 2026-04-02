@@ -12,6 +12,7 @@ import { imageOverlayService, AspectRatio } from '../image/image-overlay.service
 import { cloudinaryService } from '../cloudinary/cloudinary.service'
 import { freepikService } from '../freepik/freepik.service'
 import CalendarEntry from '../content-studio/calendar-entry.model'
+import DesignTemplate, { PromptConfig } from '../content-studio/design-template.model'
 import { IServiceResponse } from '../../interfaces/IServiceResponse'
 import { NotFoundError, BadRequestError } from '../../errors/api-errors'
 import { UPLOAD_DIR } from '../../config/upload.config'
@@ -55,6 +56,45 @@ if (!fs.existsSync(TMP_DIR)) fs.mkdirSync(TMP_DIR, { recursive: true })
 
 /** In-memory job store. Replace with Redis for multi-instance deployments. */
 const jobStore = new Map<string, Job>()
+
+function buildDesignPrompt(
+	promptConfig: PromptConfig,
+	entry: CalendarEntry,
+	product?: Product,
+	additionalPrompt?: string,
+): string {
+	const replacements: Record<string, string> = {
+		destination: entry.title || '',
+		headline: entry.title || '',
+		subheadline: entry.description || '',
+		tagline: 'by your side',
+		price: product ? `${product.currency} ${product.price}` : '',
+		duration: '',
+		includes: '',
+		dates: entry.date ? String(entry.date) : '',
+		contact: '',
+		brand_name: 'Rayna Tours',
+	}
+
+	if (product) {
+		if (product.meta) {
+			const meta = product.meta as Record<string, any>
+			if (meta.duration) replacements.duration = meta.duration
+		}
+		if (product.highlights?.length) {
+			replacements.includes = product.highlights.slice(0, 4).join(' | ')
+		}
+	}
+
+	let prompt = promptConfig.design_prompt
+	for (const [key, value] of Object.entries(replacements)) {
+		prompt = prompt.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value)
+	}
+
+	if (additionalPrompt) prompt += `\n\nAdditional instructions: ${additionalPrompt}`
+
+	return prompt
+}
 
 class ContentService {
 	async generateCarousel(input: GenerateCarouselInput, authorId: string): Promise<IServiceResponse> {
@@ -421,30 +461,61 @@ Note: Using stock/custom images, not product-specific content.`)
 		num_images?: number
 		apply_overlay: boolean
 		aspect_ratio?: AspectRatio
+		template?: DesignTemplate
 	}): Promise<{ media_urls: string[]; ai_content: { caption: string; hashtags: string[]; cta: string } }> {
-		const { entry, product, style, additional_prompt, apply_overlay } = input
+		const { entry, product, style, additional_prompt, apply_overlay, template } = input
 
-		// Build the image generation prompt from entry context
-		let imagePrompt = `Professional social media image for: ${entry.title}.`
-		if (entry.description) imagePrompt += ` ${entry.description}.`
-		if (product) imagePrompt += ` Product: ${product.name} — ${product.short_description || product.description || ''}.`
-		imagePrompt += ` Dubai tourism and travel context. High quality, vibrant, eye-catching.`
-		if (additional_prompt) imagePrompt += ` ${additional_prompt}`
+		// Build the image generation prompt — use design template if provided, otherwise fall back to generic
+		let imagePrompt: string
 
-		// Map aspect ratio to Freepik size
-		const sizeMap: Record<string, 'square_1_1' | 'portrait_3_4' | 'landscape_4_3'> = {
-			'1:1': 'square_1_1',
-			'4:5': 'portrait_3_4',
-			'1.91:1': 'landscape_4_3',
+		if (template) {
+			imagePrompt = buildDesignPrompt(template.prompt_config, entry, product, additional_prompt)
+		} else {
+			imagePrompt = `Professional social media image for: ${entry.title}.`
+			if (entry.description) imagePrompt += ` ${entry.description}.`
+			if (product) imagePrompt += ` Product: ${product.name} — ${product.short_description || product.description || ''}.`
+			imagePrompt += ` Dubai tourism and travel context. High quality, vibrant, eye-catching.`
+			if (additional_prompt) imagePrompt += ` ${additional_prompt}`
 		}
-		const size = sizeMap[input.aspect_ratio || ''] || 'square_1_1'
 
-		const imageBuffers = await freepikService.generateAIImage({
-			prompt: imagePrompt,
-			style,
-			size,
-			num_images: input.num_images || 1,
-		})
+		let imageBuffers: Buffer[]
+
+		// ── Template + product image → OpenAI image edit (image-to-image) ──
+		if (template && product?.image_urls?.length) {
+			const referenceImagePath = await this.downloadImage(product.image_urls[0], 'ref')
+			const referenceBuffer = fs.readFileSync(referenceImagePath)
+			this.cleanup(referenceImagePath)
+
+			// Map aspect ratio to OpenAI size
+			const openaiSizeMap: Record<string, '1024x1024' | '1024x1536' | '1536x1024'> = {
+				'1:1': '1024x1024',
+				'4:5': '1024x1536',
+				'1.91:1': '1536x1024',
+			}
+			const openaiSize = openaiSizeMap[input.aspect_ratio || ''] || '1024x1536'
+
+			imageBuffers = await aiService.editImage({
+				imageBuffer: referenceBuffer,
+				prompt: imagePrompt,
+				size: openaiSize,
+				quality: 'high',
+			})
+		} else {
+			// ── No template or no product image → Freepik text-to-image ──
+			const sizeMap: Record<string, 'square_1_1' | 'portrait_3_4' | 'landscape_4_3'> = {
+				'1:1': 'square_1_1',
+				'4:5': 'portrait_3_4',
+				'1.91:1': 'landscape_4_3',
+			}
+			const size = sizeMap[input.aspect_ratio || ''] || 'square_1_1'
+
+			imageBuffers = await freepikService.generateAIImage({
+				prompt: imagePrompt,
+				style,
+				size,
+				num_images: input.num_images || 1,
+			})
+		}
 
 		if (!imageBuffers.length) throw new BadRequestError('AI image generation returned no usable images')
 
@@ -519,6 +590,49 @@ Note: Using AI-generated imagery.`)
 		if (product.offer_label || (product.compare_at_price && product.compare_at_price > product.price)) return 'SELL'
 		if (product.highlights && product.highlights.length > 0) return 'VALUE'
 		return 'ENGAGEMENT'
+	}
+
+	// ── Public: Apply design template to existing images via OpenAI image editing ──
+
+	async applyDesignTemplate(input: {
+		image_urls: string[]
+		template: DesignTemplate
+		entry: CalendarEntry
+		product?: Product
+		additional_prompt?: string
+	}): Promise<string[]> {
+		const { image_urls, template, entry, product, additional_prompt } = input
+		const designPrompt = buildDesignPrompt(template.prompt_config, entry, product, additional_prompt)
+
+		const resultUrls: string[] = []
+
+		for (let i = 0; i < image_urls.length; i++) {
+			const localPath = await this.downloadImage(image_urls[i], `template-src-${i}`)
+			const imageBuffer = fs.readFileSync(localPath)
+			this.cleanup(localPath)
+
+			const editedBuffers = await aiService.editImage({
+				imageBuffer,
+				prompt: designPrompt,
+				size: '1024x1536',
+				quality: 'high',
+			})
+
+			const edited = editedBuffers[0]
+			let url: string
+			if (cloudinaryService.enabled) {
+				const uploaded = await cloudinaryService.uploadBuffer(edited, { folder: 'rayna/designed-posters' })
+				url = uploaded.secure_url
+			} else {
+				const fileName = `designed-poster-${Date.now()}-${i}.png`
+				const destPath = path.join(PROCESSED_DIR, fileName)
+				fs.writeFileSync(destPath, edited)
+				url = `/uploads/processed/${fileName}`
+			}
+			resultUrls.push(url)
+		}
+
+		return resultUrls
 	}
 
 	private async downloadAllImages(imageUrls: string[]): Promise<string[]> {

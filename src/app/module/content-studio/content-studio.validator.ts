@@ -136,6 +136,8 @@ export const composeEntrySchema = Joi.object({
 	ai_image_style: Joi.string().valid('photo', 'digital-art', '3d', 'painting').default('photo'),
 	ai_image_prompt: Joi.string().optional().allow('').trim(),
 	num_images: Joi.number().integer().min(1).max(4).default(1),
+	// Design template selection
+	template_id: Joi.string().uuid().optional().allow(null),
 })
 
 export const calendarQuerySchema = Joi.object({

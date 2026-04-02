@@ -18,6 +18,27 @@ class ContentStudioController extends ResponseService {
 		super()
 	}
 
+	// --- Design Templates ---
+
+	listDesignTemplates = async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			const mediaType = req.query.media_type as string | undefined
+			const { statusCode, payload, message } = await contentStudioService.listDesignTemplates(mediaType)
+			return this.sendResponse(res, statusCode, payload, message)
+		} catch (err) {
+			next(err)
+		}
+	}
+
+	getDesignTemplate = async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			const { statusCode, payload, message } = await contentStudioService.getDesignTemplate(req.params.id)
+			return this.sendResponse(res, statusCode, payload, message)
+		} catch (err) {
+			next(err)
+		}
+	}
+
 	// --- Content Plans ---
 
 	generatePlan = async (req: Request, res: Response, next: NextFunction) => {

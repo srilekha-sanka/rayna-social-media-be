@@ -8,5 +8,6 @@ import Campaign from '../../app/module/campaign/campaign.model'
 import Post from '../../app/module/post/post.model'
 import ContentPlan from '../../app/module/content-studio/content-plan.model'
 import CalendarEntry from '../../app/module/content-studio/calendar-entry.model'
+import DesignTemplate from '../../app/module/content-studio/design-template.model'
 
-export { User, Role, Resource, RolePermission, Product, MediaAsset, Campaign, Post, ContentPlan, CalendarEntry }
+export { User, Role, Resource, RolePermission, Product, MediaAsset, Campaign, Post, ContentPlan, CalendarEntry, DesignTemplate }

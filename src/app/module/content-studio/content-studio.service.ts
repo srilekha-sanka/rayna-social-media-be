@@ -1,6 +1,7 @@
 import { Op, WhereOptions } from 'sequelize'
 import ContentPlan, { ContentPlanStatus, VALID_POST_TYPES } from './content-plan.model'
 import CalendarEntry, { EntryContentType } from './calendar-entry.model'
+import DesignTemplate from './design-template.model'
 import Product from '../product/product.model'
 import Campaign from '../campaign/campaign.model'
 import Post from '../post/post.model'
@@ -154,6 +155,149 @@ class ContentStudioService {
 	}
 
 	// --- Async processors ---
+
+	private async processComposeWithTemplate(
+		jobId: string,
+		entryId: string,
+		userId: string,
+		entry: CalendarEntry,
+		contentSource: string,
+		template: DesignTemplate,
+		data?: {
+			stock_image_urls?: string[]
+			ai_image_style?: 'photo' | 'digital-art' | '3d' | 'painting'
+			ai_image_prompt?: string
+			num_images?: number
+			apply_overlay?: boolean
+			generate_ai_caption?: boolean
+			base_content?: string; hashtags?: string[]; cta_text?: string; media_urls?: string[]
+		},
+	) {
+		let mediaUrls: string[] = data?.media_urls || []
+
+		// Step 1: Get base images from the chosen source
+		if (contentSource === 'PRODUCT') {
+			const genConfig = entry.content_plan?.generation_config as { product_ids?: string[] } | null
+			if (!entry.product_id && genConfig?.product_ids?.length) {
+				const productIds = genConfig.product_ids
+				const product = await Product.findOne({ where: { id: { [Op.in]: productIds }, is_active: true } })
+				if (product) {
+					await entry.update({ product_id: product.id })
+					entry.product_id = product.id
+					entry.product = product
+				}
+			}
+			if (entry.product_id && (!entry.product || !entry.product.image_urls)) {
+				entry.product = await Product.findByPk(entry.product_id) as Product
+			}
+			if (entry.product?.image_urls?.length) {
+				mediaUrls = entry.product.image_urls.slice(0, data?.num_images || 1)
+			}
+		} else if (contentSource === 'STOCK') {
+			if (data?.stock_image_urls?.length) {
+				mediaUrls = data.stock_image_urls
+			}
+		} else if (contentSource === 'AI_GENERATED') {
+			if (entry.product_id && (!entry.product || !entry.product.image_urls)) {
+				entry.product = await Product.findByPk(entry.product_id) as Product
+			}
+			if (entry.product?.image_urls?.length) {
+				mediaUrls = entry.product.image_urls.slice(0, data?.num_images || 1)
+			}
+		}
+
+		if (!mediaUrls.length) {
+			throw new BadRequestError('No base images available to apply design template')
+		}
+
+		// Step 2: Apply design template via OpenAI image editing
+		mediaUrls = await contentService.applyDesignTemplate({
+			image_urls: mediaUrls,
+			template,
+			entry,
+			product: entry.product || undefined,
+			additional_prompt: data?.ai_image_prompt,
+		})
+
+		jobStore.set(jobId, { ...jobStore.get(jobId)!, progress: { completed: 1, total: 2 } })
+
+		// Step 3: Generate AI caption
+		let aiCaption = data?.base_content || undefined
+		let aiHashtags = data?.hashtags || []
+		let aiCta = data?.cta_text || undefined
+
+		if (!aiCaption) {
+			const captionResult = await aiService.callOpenAIRaw<{ caption: string; hashtags: string[]; cta_text: string }>(`You are a social media copywriter for Rayna Tours, Dubai's top tours & activities company.
+
+RESPOND WITH VALID JSON ONLY:
+{"caption":"the full post caption","hashtags":["hashtag1","hashtag2"],"cta_text":"call to action"}
+
+RULES:
+- Platform: ${entry.platform}
+- Content type: ${entry.content_type}
+- Write an engaging, scroll-stopping caption
+- 10-15 relevant hashtags
+- Platform-appropriate CTA
+${entry.product ? `- Product: ${entry.product.name}, Price: ${entry.product.currency} ${entry.product.price}` : ''}`, `Create post content for:
+Title: ${entry.title}
+Brief: ${entry.description || 'No specific brief'}
+${entry.product ? `Product: ${entry.product.name}` : ''}
+Platform: ${entry.platform} | Type: ${entry.content_type}
+Note: Using AI-designed poster with "${template.name}" style.`)
+
+			aiCaption = captionResult.caption
+			if (!aiHashtags.length) aiHashtags = captionResult.hashtags
+			if (!aiCta) aiCta = captionResult.cta_text
+		}
+
+		// Step 4: Create or update post draft
+		const existingPost = await Post.findOne({
+			where: { calendar_entry_id: entryId, is_active: true },
+			include: [
+				{ model: Campaign, attributes: ['id', 'name', 'goal', 'type'] },
+				{ model: User, as: 'author', attributes: ['id', 'email', 'first_name'] },
+			],
+		})
+
+		let post: Post
+		if (existingPost) {
+			await existingPost.update({
+				media_urls: mediaUrls,
+				base_content: aiCaption || existingPost.base_content,
+				hashtags: aiHashtags.length ? aiHashtags : existingPost.hashtags,
+				cta_text: aiCta || existingPost.cta_text,
+			})
+			post = existingPost
+		} else {
+			post = await Post.create({
+				calendar_entry_id: entryId,
+				campaign_id: entry.campaign_id || null,
+				author_id: userId,
+				base_content: aiCaption || null,
+				hashtags: aiHashtags,
+				cta_text: aiCta || null,
+				platforms: [entry.platform],
+				media_urls: mediaUrls,
+				status: 'DRAFT',
+			} as any)
+			await entry.update({ status: 'COMPOSING' })
+		}
+
+		const full = await Post.findByPk(post.id, {
+			include: [
+				{ model: Campaign, attributes: ['id', 'name', 'goal', 'type'] },
+				{ model: User, as: 'author', attributes: ['id', 'email', 'first_name'] },
+			],
+		})
+
+		jobStore.set(jobId, {
+			status: 'COMPLETED',
+			result: { post: full, entry, content_source: contentSource, template_name: template.name },
+			started_at: jobStore.get(jobId)!.started_at,
+			completed_at: new Date(),
+			progress: { completed: 2, total: 2 },
+		})
+	}
 
 	private async processGeneratePlan(jobId: string, planId: string, input: GeneratePlanInput, products: Product[]) {
 		const activeCampaigns = await this.fetchActiveCampaigns(input.start_date, input.end_date)
@@ -512,6 +656,7 @@ class ContentStudioService {
 			apply_overlay?: boolean; generate_ai_caption?: boolean
 			ai_image_style?: 'photo' | 'digital-art' | '3d' | 'painting'
 			ai_image_prompt?: string; num_images?: number
+			template_id?: string
 		},
 	): Promise<IServiceResponse> {
 		const entry = await CalendarEntry.findByPk(entryId, {
@@ -537,9 +682,34 @@ class ContentStudioService {
 		let aiHashtags = data?.hashtags || []
 		let aiCta = data?.cta_text || undefined
 
-		// ── PRODUCT source (existing flow) ──
+		// Load design template upfront (applies to ANY source)
+		let template: DesignTemplate | undefined
+		if (data?.template_id) {
+			const found = await DesignTemplate.findByPk(data.template_id)
+			if (!found || !found.is_active) throw new BadRequestError('Design template not found or inactive')
+			template = found
+		}
+
+		// ── If template selected → run as async job (OpenAI image edit takes 20-40s) ──
+		if (template) {
+			const jobId = `compose-${entryId}-${Date.now()}`
+			jobStore.set(jobId, { status: 'PROCESSING', started_at: new Date(), progress: { completed: 0, total: 1 } })
+
+			this.processComposeWithTemplate(jobId, entryId, userId, entry, contentSource, template, data).catch((err: Error) => {
+				jobStore.set(jobId, { status: 'FAILED', error: err.message, started_at: jobStore.get(jobId)!.started_at, completed_at: new Date() })
+			})
+
+			return {
+				statusCode: 202,
+				payload: { job_id: jobId, entry_id: entryId, template_name: template.name, status: 'PROCESSING' },
+				message: 'Design poster generation started. Poll job status for updates.',
+			}
+		}
+
+		// ── No template → synchronous flow (existing behavior) ──
+
+		// ── PRODUCT source ──
 		if (contentSource === 'PRODUCT') {
-			// If entry has no product but plan has product_ids, assign the first available product
 			const genConfig = entry.content_plan?.generation_config as { product_ids?: string[] } | null
 			if (!entry.product_id && genConfig?.product_ids?.length) {
 				const productIds = genConfig.product_ids
@@ -561,7 +731,6 @@ class ContentStudioService {
 					platform: entry.platform,
 					slide_count: entry.post_type === 'image' ? 1 : undefined,
 				})
-
 				mediaUrls = result.media_urls
 				if (!aiCaption) aiCaption = result.ai_content.caption
 				if (!aiHashtags.length) aiHashtags = result.ai_content.hashtags
@@ -581,16 +750,14 @@ class ContentStudioService {
 				apply_overlay: data.apply_overlay !== false,
 				generate_ai_caption: data.generate_ai_caption !== false,
 			})
-
 			mediaUrls = result.media_urls
 			if (result.ai_content && !aiCaption) aiCaption = result.ai_content.caption
 			if (result.ai_content && !aiHashtags.length) aiHashtags = result.ai_content.hashtags
 			if (result.ai_content && !aiCta) aiCta = result.ai_content.cta
 		}
 
-		// ── AI_GENERATED source ──
+		// ── AI_GENERATED source (no template) ──
 		if (contentSource === 'AI_GENERATED') {
-			// Reload product for context if available
 			if (entry.product_id && (!entry.product || !entry.product.image_urls)) {
 				entry.product = await Product.findByPk(entry.product_id) as Product
 			}
@@ -1078,17 +1245,19 @@ class ContentStudioService {
 	}
 
 	private sanitizeAIEntries(entries: AIPlanEntry[], products?: Product[]): AIPlanEntry[] {
+		const validContentTypes: EntryContentType[] = ['PRODUCT_PROMO', 'FESTIVAL_GREETING', 'ENGAGEMENT', 'VALUE', 'BRAND_AWARENESS']
 		let productIndex = 0
 		return entries.map((e) => {
+			const content_type = validContentTypes.includes(e.content_type) ? e.content_type : 'BRAND_AWARENESS'
 			let productId = this.sanitizeProductId(e.product_id) || undefined
 
 			// If PRODUCT_PROMO but AI didn't assign a valid product_id, assign one from the available products (round-robin)
-			if (!productId && e.content_type === 'PRODUCT_PROMO' && products?.length) {
+			if (!productId && content_type === 'PRODUCT_PROMO' && products?.length) {
 				productId = products[productIndex % products.length].id
 				productIndex++
 			}
 
-			return { ...e, product_id: productId }
+			return { ...e, content_type, product_id: productId }
 		})
 	}
 
@@ -1222,6 +1391,26 @@ ${campaignContext}
 Platform: ${entry.platform} | Format: ${entry.post_type} | Type: ${entry.content_type} | Language: ${language}`
 
 		return aiService.callOpenAIRaw<AIPostContent>(systemPrompt, userPrompt)
+	}
+	// --- Design Templates ---
+
+	async listDesignTemplates(mediaType?: string): Promise<IServiceResponse> {
+		const where: WhereOptions = { is_active: true }
+		if (mediaType) (where as any).media_type = mediaType
+
+		const templates = await DesignTemplate.findAll({
+			where,
+			order: [['sort_order', 'ASC']],
+			attributes: ['id', 'name', 'slug', 'description', 'media_type', 'thumbnail_url', 'sort_order'],
+		})
+
+		return { statusCode: 200, payload: { templates }, message: 'Design templates retrieved' }
+	}
+
+	async getDesignTemplate(id: string): Promise<IServiceResponse> {
+		const template = await DesignTemplate.findByPk(id)
+		if (!template || !template.is_active) throw new NotFoundError('Design template not found')
+		return { statusCode: 200, payload: { template }, message: 'Design template retrieved' }
 	}
 }
 
