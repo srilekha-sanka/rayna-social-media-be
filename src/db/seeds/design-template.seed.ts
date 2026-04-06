@@ -6,51 +6,94 @@ const DESIGN_TEMPLATES = [
 	{
 		name: 'Explorer Minimal',
 		slug: 'explorer-minimal',
-		description: 'Cinematic wide-angle, clean luxury, Gen Z aesthetic with bold sans-serif + script accent',
+		description: 'Bold cinematic travel ad with script+sans combo headline, yellow accent banner, split contact footer',
 		media_type: 'image' as const,
 		prompt_config: {
-			design_prompt: `Create a high-end travel poster for {{destination}} in a bold Instagram marketing style.
+			design_prompt: `You are a senior travel marketing designer specializing in high-converting Instagram travel posters with a bold, cinematic adventure-marketing style.
 
-Scene:
-A cinematic wide-angle view of a serene landmark or iconic location at {{destination}} during sunset. The sky is dramatic with orange, pink, and teal clouds. The main subject is centered with perfect symmetry and reflection in water. Soft mist and distant hills in the background.
+Your task is to transform ANY destination image into a bold, high-end Instagram travel poster for "{{brand_name}}".
 
-Style:
-Modern travel advertisement, minimal yet bold, Gen Z aesthetic, clean luxury design, high contrast, sharp details, cinematic lighting, ultra-realistic.
+The design must follow a STRICT reusable layout system and work consistently across ALL types of images WITHOUT heavy color grading.
 
-Text Layout:
-Top center (small, spaced letters):
-"{{destination}}"
+========================
+PRIMARY OBJECTIVE
+========================
+Create a bold, high-converting Instagram travel poster that:
+- Feels youthful, vibrant, and scroll-stopping
+- Uses cinematic but natural visual style
+- Maintains strong readability on any background
+- Works as a reusable design system
 
-Main headline (large, bold, uppercase, centered):
-"{{headline}}"
+========================
+LAYOUT STRUCTURE (MANDATORY)
+========================
 
-Subtext below headline (small caps):
-"{{subheadline}}"
+1. TOP LABEL (Small, minimal)
+- "{{destination}}"
+- Top center, small uppercase sans-serif, spaced letters
+- White with slight transparency
 
-Highlight banner (center or lower third, rounded rectangle, soft yellow or beige):
-"{{price}} | {{duration}}"
+2. BRAND LOGO (Top)
+- "{{brand_name}}" at top center or top left
+- Small, clean, white
+- Keep original proportions
 
-Bottom:
-Add a clean luxury travel logo placeholder (minimal white logo style) with text:
-"{{brand_name}}"
+3. HERO HEADLINE (Main Focus)
+- Script accent word: "Explore" (yellow/gold accent)
+- Bold destination: "{{headline}}" (large bold uppercase sans-serif)
+- Center aligned, script slightly overlapping bold text
+- Very subtle shadow for readability
 
-Typography:
-- Mix of bold sans-serif (for headings)
-- Elegant serif or script accent for the main word
-- Clean spacing, premium alignment
+4. DESTINATIONS SUBTEXT
+- "{{subheadline}}"
+- Small uppercase sans-serif, bullet-separated
+- White, slightly muted
 
-Color grading:
-Teal and orange cinematic tones, slightly desaturated for luxury feel
+5. HIGHLIGHT BANNER (Important)
+- Rounded rectangle, soft yellow/warm beige
+- "STARTING FROM {{price}} | {{duration}}"
+- Bold sans-serif, high readability
+- Center or lower-third placement
 
-Composition:
-Poster should be vertical (4:5 Instagram ratio), balanced, uncluttered, premium branding
+6. CONTACT FOOTER
+- Left side: "{{contact}}"
+- Small sans-serif, white
+- Bottom aligned
 
-Lighting:
-Soft glow on subject, natural reflections, slightly dreamy atmosphere
+========================
+BACKGROUND RULES (CRITICAL)
+========================
+- Use original image as-is
+- Add VERY subtle dark gradient at bottom for text clarity
+- Optional slight vignette
+- NO heavy color grading or artificial filters
 
-Avoid:
-Overcrowding, too many colors, cheap flyer look, excessive text`,
-			dynamic_fields: ['destination', 'headline', 'subheadline', 'price', 'duration', 'brand_name'],
+========================
+COLOR SYSTEM
+========================
+- Primary text: White/off-white
+- Accent: Yellow/gold for script word and highlight banner only
+- Natural environment colors must dominate
+
+========================
+TYPOGRAPHY RULES
+========================
+- Max 2-3 fonts:
+  1. Script → accent word ("Explore")
+  2. Bold sans-serif → main destination name
+  3. Clean sans-serif → all other text
+- Hierarchy: Headline > Banner > Subtext > Footer
+
+========================
+OUTPUT
+========================
+Generate a bold, high-converting Instagram travel poster with:
+- Script + bold sans combo headline
+- Yellow accent highlight banner
+- Split contact footer
+- {{brand_name}} branding
+- Universal adaptability across all images`,
+			dynamic_fields: ['destination', 'headline', 'subheadline', 'price', 'duration', 'contact', 'brand_name'],
 		},
 		sort_order: 1,
 	},
@@ -142,82 +185,110 @@ Generate a polished, high-end Instagram travel ad poster with balanced layout, c
 	{
 		name: 'Bold Adventure',
 		slug: 'bold-adventure',
-		description: 'Rugged trek/event poster style, youth-focused, script headline with structured info layout',
+		description: 'Bold adventure trek poster, script headline, accent-colored includes, pill-style footer',
 		media_type: 'image' as const,
 		prompt_config: {
-			design_prompt: `You are a senior adventure travel designer and social media performance marketer.
+			design_prompt: `You are a senior adventure travel designer and social media performance marketer specializing in high-converting Instagram travel and trek posters.
 
-Your task is to convert any given outdoor/travel image into a bold, high-converting trek/event poster suitable for Instagram.
+Your task is to transform ANY outdoor/travel image into a bold, high-impact adventure-style promotional poster for "{{brand_name}}".
 
-Destination: {{destination}}
+The design must follow a STRICT reusable layout system and must work consistently across ALL types of outdoor images (treks, mountains, forests, beaches, valleys, deserts) WITHOUT heavy color grading.
 
-Design Style:
-- Adventure, raw, bold, slightly rugged aesthetic
-- Youth-focused (Gen Z + millennial travelers)
-- Informative but visually appealing
-- Poster-style layout (not minimal luxury)
+========================
+PRIMARY OBJECTIVE
+========================
+Create a bold, youthful, and high-converting trek/event poster that:
+- Feels adventurous, raw, and energetic
+- Maintains strong readability on any background
+- Uses structured information hierarchy
+- Preserves natural image tones
 
-Layout Structure:
+========================
+LAYOUT STRUCTURE (MANDATORY)
+========================
 
-1. Logo (Top Center or Top Left):
-- Small but visible
-- "{{brand_name}}"
-- White or light color for contrast
+1. LOGO (Top Left)
+- "{{brand_name}}" logo
+- Small but clearly visible
+- White or light version
+- Maintain proper spacing from edges
 
-2. Main Title (Hero Text):
-- Large, bold, handwritten/script or strong display font
+2. MAIN TITLE (HERO TEXT)
+- Large, bold handwritten/script font
 - "{{headline}}"
 - Center aligned
-- High contrast (white or off-white)
-- Slight shadow or glow for readability
+- White or off-white color
+- Subtle shadow for readability
+- Most dominant visual element
 
-3. Pricing Section:
-- Mid section, clear hierarchy
-- "{{price}}"
-- Price should stand out (bold + bigger font)
+3. PRICING SECTION (Center)
+- Small label: "Fees-" or "Starting From"
+- Large bold value: "{{price}}"
+- Price significantly larger than label
+- Clean sans-serif font, center aligned
 
-4. Includes Section:
-- Clear list format (single line or stacked)
-- "{{includes}}"
-- Medium weight font
+4. INCLUDES SECTION
+- Accent-colored label: "Includes"
+- Content: "{{includes}}"
+- Bold sans-serif, pipe-separated
+- Center aligned, compact
 
-5. Date + Contact Info (Bottom):
-- Small but readable
-- Structured layout:
-  "{{dates}}"
-  "{{contact}}"
+5. FOOTER (Bottom — horizontal pill layout)
+- "{{dates}}"
+- "{{contact}}"
+- Arranged as horizontal pill/box segments
+- Small but readable sans-serif
+- Bottom center alignment
 
-6. Background Treatment:
-- Keep original image dominant
-- Add slight dark gradient overlay (top or bottom) for text clarity
+========================
+BACKGROUND RULES (CRITICAL)
+========================
+- Use original image ONLY
+- DO NOT apply heavy color grading
+- Allowed: slight contrast boost, subtle dark gradient for text readability
 
-Typography:
-- Title: Script or bold display font
-- Body: Clean sans-serif
-- Maintain clear hierarchy (Title > Price > Includes > Details)
+========================
+COLOR SYSTEM
+========================
+- Primary text: White or off-white
+- Accent: Yellow/orange for "Includes" label only
+- Natural tones from image
+- Avoid neon or oversaturated colors
 
-Color Style:
-- Natural tones (greens, browns, sky blues)
-- White or yellow text for contrast
-- Optional accent color (yellow/orange) for highlights
+========================
+TYPOGRAPHY RULES
+========================
+- Maximum 2 fonts:
+  1. Script/display → Title
+  2. Sans-serif → All other content
+- Hierarchy: Title > Price > Includes > Details
 
-Composition Rules:
-- Centered layout
-- Text stacked vertically
-- Maintain readability on mobile (Instagram 4:5 or 1:1)
+========================
+COMPOSITION RULES
+========================
+- Instagram 4:5 (portrait)
+- Centered layout with vertical stacking
+- Breathing space between elements
+- Optimized for mobile readability
 
-Optional Enhancements:
-- Add subtle vignette
-- Slight contrast boost for dramatic effect
+========================
+STRICTLY AVOID
+========================
+- Over-minimal or luxury style
+- Too many fonts
+- Heavy filters or unnatural edits
+- Cluttered compositions
+- Low contrast text
 
-DO NOT:
-- Over-minimalize (this is not luxury style)
-- Use too many fonts
-- Clutter with unnecessary graphics
-- Reduce readability
-
-OUTPUT:
-Generate a bold, clean, adventure-style trek poster with strong typography, clear information hierarchy, and high visual impact suitable for Instagram promotions.`,
+========================
+OUTPUT
+========================
+Generate a bold, clean, adventure-style trek poster with:
+- Strong script headline
+- Clear pricing and includes hierarchy
+- Pill-style footer with date + contact
+- {{brand_name}} branding
+- Universal adaptability across all outdoor images`,
 			dynamic_fields: ['destination', 'headline', 'price', 'includes', 'dates', 'contact', 'brand_name'],
 		},
 		sort_order: 3,
@@ -227,84 +298,112 @@ Generate a bold, clean, adventure-style trek poster with strong typography, clea
 	{
 		name: 'Heritage Cinematic',
 		slug: 'heritage-cinematic',
-		description: 'Cultural, calligraphy headline, serif fonts, museum campaign aesthetic, timeless elegance',
+		description: 'Cinematic cultural poster with calligraphy headline, serif title, split bottom layout, timeless elegance',
 		media_type: 'image' as const,
 		prompt_config: {
-			design_prompt: `You are a senior brand designer specializing in heritage, cultural, and cinematic travel posters.
+			design_prompt: `You are a senior brand designer specializing in heritage, cultural, and cinematic travel posters for premium tourism campaigns.
 
-Your task is to transform any destination image into a premium heritage-style travel poster inspired by editorial museum campaigns and cultural tourism branding.
+Your task is to transform ANY destination image into a timeless, premium heritage-style travel poster for "{{brand_name}}".
 
-Destination: {{destination}}
+The output must follow a STRICT reusable layout system and must work consistently across ALL types of images (temples, cities, beaches, mountains, architecture) WITHOUT heavy color grading or artificial filters.
 
-Design Style:
-- Cultural, elegant, timeless
-- Cinematic and slightly dramatic
-- Premium heritage aesthetic (not modern minimal, not casual)
-- Strong typography hierarchy
+========================
+PRIMARY OBJECTIVE
+========================
+Create a cinematic, cultural, and premium travel poster that:
+- Feels timeless and editorial (museum-quality aesthetic)
+- Maintains high readability on any background
+- Uses structured typography hierarchy
+- Preserves natural image tones (no heavy edits)
+- Works as a reusable design system
 
-Layout Structure:
+========================
+LAYOUT STRUCTURE (MANDATORY)
+========================
 
-1. Artistic Headline (Top Section):
+1. ARTISTIC HEADLINE (Top Section)
 - Large expressive script or calligraphy-style font
 - "{{headline}}"
-- Should feel artistic and slightly overlapping the sky/background
-- Use soft cream or off-white color
+- Slightly overlaps sky or open background area
+- Color: soft cream or off-white
+- Must feel elegant, artistic, and cultural (NOT playful)
 
-2. Main Title (Center):
-- Large serif font (cinematic, elegant)
+2. MAIN TITLE (Center)
+- Large serif font (cinematic, authoritative)
 - "{{subheadline}}"
-- All caps, well spaced
-- Strong and authoritative
+- ALL CAPS with good letter spacing
+- Strong visual anchor of the design
+- Center aligned
 
-3. Subtitle (Below Title):
+3. SUBTITLE (Below Title)
 - Smaller serif font
 - "{{tagline}}"
-- Optional decorative divider (line or ornament)
+- Use subtle bullet separators
+- Optional thin divider line or ornament for premium feel
 
-4. Background Treatment:
-- Use the original image (temple / landscape)
-- Add slight vignette or dark gradient at bottom
-- Enhance contrast and depth for cinematic feel
+4. BACKGROUND HANDLING (CRITICAL)
+- Use original image ONLY
+- DO NOT apply heavy color grading or filters
+- DO NOT alter natural tones
+- Allowed: slight contrast enhancement, very subtle vignette or bottom gradient for readability
 
-5. Information Section (Bottom Left):
-- "Includes:"
-- "{{includes}}"
-- Use sans-serif font for readability
+5. INFORMATION SECTION (Bottom Left)
+- Title: "Includes:"
+- Content: "{{includes}}"
+- Use clean sans-serif font
+- Medium-small size
 
-6. Date / Duration / Price (Bottom Right):
-- Structured blocks:
-  "{{duration}}"
-  "{{price}}"
-- Keep alignment clean and balanced
+6. DETAILS SECTION (Bottom Right)
+- "{{duration}}"
+- "STARTING FROM {{price}}"
+- Serif or sans-serif, balanced alignment
 
-7. Branding (Bottom Center or Corner):
+7. BRANDING (Bottom Center)
 - "{{brand_name}}"
-- Add tagline: "{{tagline}}"
-- Minimal, elegant, not overpowering
+- Tagline: "by your side"
+- Minimal, elegant, non-dominant
 
-Typography Rules:
-- Script font -> emotional headline
-- Serif font -> main title (cinematic feel)
-- Sans-serif -> details (clean readability)
+========================
+TYPOGRAPHY RULES
+========================
+- Use MAXIMUM 3 font types:
+  1. Script / Calligraphy → Artistic headline
+  2. Serif → Main title & subtitle
+  3. Sans-serif → Information sections
+- Maintain clear hierarchy, consistent spacing, premium editorial feel
 
-Color Palette:
-- Cream / off-white text
-- Gold accents (optional)
-- Natural tones from image (no neon colors)
+========================
+COLOR SYSTEM
+========================
+- Primary text: Cream / off-white
+- Optional accent: very subtle gold (minimal)
+- Use natural tones from image
+- Avoid neon, oversaturation, harsh contrasts
 
-Composition Rules:
-- Maintain center focus on monument
-- Keep text breathable (use negative space)
-- Ensure mobile readability (Instagram 4:5)
+========================
+COMPOSITION RULES
+========================
+- Format: Instagram 4:5 (portrait)
+- Centered layout with strong vertical flow
+- Use negative space intelligently
+- Ensure mobile readability
 
-DO NOT:
-- Use flashy or modern fonts
-- Overcrowd layout
-- Use bright or distracting colors
-- Make it look like a cheap travel flyer
+========================
+SMART ADAPTATION
+========================
+- If background is bright → slightly deepen text contrast
+- If background is dark → slightly soften text brightness
+- If background is busy → increase spacing instead of overlays
 
-OUTPUT:
-Generate a cinematic, heritage-style travel poster that feels premium, cultural, and timeless, suitable for Instagram marketing.`,
+========================
+OUTPUT
+========================
+Generate a premium, cinematic, heritage-style travel poster with:
+- Calligraphy headline
+- Structured serif typography
+- Split bottom layout (includes left, price right)
+- {{brand_name}} branding with tagline
+- Universal adaptability across all images`,
 			dynamic_fields: ['destination', 'headline', 'subheadline', 'tagline', 'includes', 'duration', 'price', 'brand_name'],
 		},
 		sort_order: 4,
@@ -314,81 +413,129 @@ Generate a cinematic, heritage-style travel poster that feels premium, cultural,
 	{
 		name: 'Brush Script Escape',
 		slug: 'brush-script-escape',
-		description: 'Bold brush/script hero text, structured info blocks, adventure-clean style',
+		description: 'Bold brush/script hero text, structured info blocks, adventure-clean style with strict reusable layout',
 		media_type: 'image' as const,
 		prompt_config: {
-			design_prompt: `You are a senior travel marketing designer specializing in high-converting Instagram posters.
+			design_prompt: `You are a senior travel marketing designer and performance creative expert specializing in high-converting Instagram travel posters (2025–2026 trends).
 
-Your task is to transform any destination image into a bold adventure-style travel poster using a brush-script headline and structured layout.
+Your task is to transform ANY destination image into a bold, clean, adventure-style promotional poster for a travel brand called "{{brand_name}}".
 
-Destination: {{destination}}
+The design must follow a STRICT reusable layout system and must work consistently across all types of images (beach, city, mountains, temples, etc.) WITHOUT heavy color grading.
 
-Design Style:
-- Clean, bold, adventure aesthetic
-- Youth-focused, high readability
-- Slightly rugged but premium
-- Strong visual hierarchy
+========================
+PRIMARY OBJECTIVE
+========================
+Create a visually striking, high-conversion Instagram poster that:
+- Maintains strong readability on any background
+- Uses a consistent brand layout
+- Feels premium, youthful, and modern
+- Avoids heavy edits so it works on any image
 
-Layout Structure:
+========================
+LAYOUT STRUCTURE (MANDATORY)
+========================
 
-1. Logo (Top Center):
-- Small travel brand logo
-- "{{brand_name}}"
-- White color, minimal
+1. LOGO (Top Center)
+- Use "{{brand_name}}" logo
+- Small, clean, premium look
+- White or adaptive light tone
+- Maintain proper top spacing
+- Do NOT distort or stylize the logo
 
-2. Main Headline (Hero Text):
-- Large brush/script font (handwritten style)
+2. MAIN HEADLINE (Hero Text)
+- Large brush/script handwritten style font
 - "{{headline}}"
 - Center aligned
 - White or off-white color
-- Slight shadow or glow for contrast
-- This is the most dominant element
+- Add very subtle shadow or glow ONLY for readability
+- This must be the most dominant visual element
 
-3. Pricing Section (Center):
+3. PRICING SECTION (Center)
 - Small label: "Starting From"
-- Bold value: "{{price}}"
-- Clear hierarchy (price larger than label)
+- Large bold price: "{{price}}"
+- Clear hierarchy (price much larger than label)
+- Use clean sans-serif font (Montserrat or Poppins)
+- Center aligned under headline
 
-4. Includes Section:
+4. INCLUDES SECTION
 - Title: "Includes"
 - Content: "{{includes}}"
 - Clean sans-serif font
 - Medium size, easy to scan
+- Balanced spacing
 
-5. Date / Duration / Contact (Bottom):
-- "{{dates}} | {{duration}}"
+5. FOOTER (Bottom Section)
+- "{{dates}}"
 - "{{contact}}"
-- Structured horizontally or stacked
+- Layout: horizontal or stacked depending on space
+- Small but readable sans-serif font
+- Bottom center alignment
 
-6. Background Treatment:
-- Use original destination image (temple/beach/jungle)
-- Add subtle dark gradient at bottom for readability
-- Enhance contrast slightly
+========================
+BACKGROUND RULES (CRITICAL)
+========================
+- Use the original image as-is
+- DO NOT apply heavy color grading or filters
+- DO NOT change natural tones
 
-Typography Rules:
-- Headline: Brush/script font (like "Playlist Script", "Brush Script", "Pacifico")
-- Body: Clean sans-serif (Montserrat / Poppins)
-- Maintain spacing and alignment
+Allowed adjustments:
+- Slight contrast improvement (only if needed)
+- Very subtle bottom gradient (black to transparent, low opacity) ONLY for text readability
 
-Color Palette:
-- White/off-white text
-- Optional accent: yellow/orange for highlights
-- Natural tones from image
+The design must work universally on ANY image.
 
-Composition Rules:
-- Keep text centered vertically
-- Maintain breathing space
-- Optimize for Instagram (4:5 ratio)
+========================
+COLOR SYSTEM
+========================
+- Primary text: White or off-white
+- Optional accent: very minimal yellow/orange
+- Must adapt to background automatically
+- Avoid bright, neon, or oversaturated colors
 
-DO NOT:
-- Overcrowd the design
-- Use too many fonts
-- Make it look like a cheap flyer
-- Reduce readability
+========================
+TYPOGRAPHY RULES
+========================
+- Use ONLY 2 fonts:
+  1. Brush/Script font for headline (like "Playlist Script", "Brush Script", "Pacifico")
+  2. Clean sans-serif for all other text (Montserrat or Poppins)
+- Maintain strong hierarchy and spacing
+- Keep everything clean and readable
 
-OUTPUT:
-Generate a bold, clean, Instagram-ready travel poster with a strong brush-script headline and structured information layout for {{brand_name}}.`,
-			dynamic_fields: ['destination', 'headline', 'price', 'includes', 'dates', 'duration', 'contact', 'brand_name'],
+========================
+COMPOSITION RULES
+========================
+- Instagram format: 4:5 (portrait)
+- Centered layout with strong vertical flow
+- Maintain breathing space between elements
+- Optimize for mobile readability
+
+========================
+STRICTLY AVOID
+========================
+- Overcrowded layouts
+- Too many fonts
+- Heavy filters or unnatural edits
+- Cheap flyer-style designs
+- Low contrast text
+- Random or unstructured placement
+
+========================
+SMART ADAPTATION
+========================
+- If background is bright → slightly enhance text contrast
+- If background is dark → slightly brighten text tone
+- If background is busy → increase spacing instead of adding overlays
+
+========================
+OUTPUT
+========================
+Generate a bold, clean, premium Instagram travel poster with:
+- Strong brush-script headline
+- Structured layout
+- High readability
+- Consistent {{brand_name}} branding
+- Universal adaptability across all images`,
+			dynamic_fields: ['destination', 'headline', 'price', 'includes', 'dates', 'contact', 'brand_name'],
 		},
 		sort_order: 5,
 	},

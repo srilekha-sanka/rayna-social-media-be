@@ -37,4 +37,10 @@ export const env = Object.freeze({
 	freepik: {
 		apiKey: process.env.FREEPIK_API_KEY || '',
 	},
+	fal: {
+		apiKey: process.env.FAL_API_KEY || '',
+	},
+	brand: {
+		logoUrl: process.env.BRAND_LOGO_URL || '',
+	},
 })

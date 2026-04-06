@@ -57,34 +57,76 @@ if (!fs.existsSync(TMP_DIR)) fs.mkdirSync(TMP_DIR, { recursive: true })
 /** In-memory job store. Replace with Redis for multi-instance deployments. */
 const jobStore = new Map<string, Job>()
 
+/**
+ * Resolve the correct aspect ratio based on platform + post type.
+ * Instagram images/carousels → 4:5 portrait, stories/reels → 9:16 (use 4:5 since we don't support 9:16 yet),
+ * Facebook → 4:5, Twitter/LinkedIn → 1.91:1 landscape.
+ * Default: 4:5 portrait for everything.
+ */
+function resolveAspectRatio(platform?: string, postType?: string): AspectRatio {
+	const p = (platform || '').toLowerCase()
+	const t = (postType || '').toLowerCase()
+
+	// Stories and reels are vertical — use 4:5 (closest supported portrait)
+	if (t === 'story' || t === 'reel') return '4:5'
+
+	// Twitter/X and LinkedIn prefer landscape for link cards
+	if (p === 'twitter' || p === 'x' || p === 'linkedin') {
+		if (t === 'carousel' || t === 'image') return '4:5' // carousels/images are still portrait
+		return '1.91:1'
+	}
+
+	// Instagram & Facebook — always portrait for images and carousels
+	return '4:5'
+}
+
+const LIFESTYLE_HUMAN_PROMPT = `Add a small woman seen from behind in the bottom-right corner of this image. She is sitting or standing, wearing a light dress and straw sun hat, looking at the view. Show only her upper body or half body. She should be small relative to the image — do NOT make her dominate the frame. CRITICAL: Do NOT change, add, remove, or modify ANYTHING else in the image — no new grass, no new ground, no new objects, no color changes, no background changes. The rest of the image must remain pixel-perfect identical. Only add the woman.`
+
+function buildPosterData(
+	entry: CalendarEntry,
+	product?: Product,
+): Record<string, string> {
+	const meta = (product?.meta || {}) as Record<string, any>
+
+	const entryDate = entry.date ? new Date(entry.date) : null
+	const formattedDate = entryDate
+		? `${entryDate.getDate()} ${entryDate.toLocaleString('en-US', { month: 'short' }).toUpperCase()}`
+		: ''
+
+	const durationShort = meta.duration_short || meta.nights
+		? `${(meta.days || '')}D-${(meta.nights || '')}N`
+		: ''
+
+	let includes = ''
+	if (product) {
+		if (meta.includes) {
+			includes = String(meta.includes)
+		} else {
+			includes = 'Stay | Breakfast | Tours | Transfers'
+		}
+	}
+
+	return {
+		destination: entry.title || '',
+		headline: entry.title || '',
+		subheadline: entry.description || '',
+		tagline: meta.tagline || 'by your side',
+		price: product ? `${product.currency} ${product.price}/-` : '',
+		duration: durationShort,
+		includes,
+		dates: formattedDate + (durationShort ? ` | ${durationShort}` : ''),
+		contact: meta.contact || '+971 4 208 7444 | +91 20 6683 8877',
+		brand_name: 'Rayna Tours',
+	}
+}
+
 function buildDesignPrompt(
 	promptConfig: PromptConfig,
 	entry: CalendarEntry,
 	product?: Product,
 	additionalPrompt?: string,
 ): string {
-	const replacements: Record<string, string> = {
-		destination: entry.title || '',
-		headline: entry.title || '',
-		subheadline: entry.description || '',
-		tagline: 'by your side',
-		price: product ? `${product.currency} ${product.price}` : '',
-		duration: '',
-		includes: '',
-		dates: entry.date ? String(entry.date) : '',
-		contact: '',
-		brand_name: 'Rayna Tours',
-	}
-
-	if (product) {
-		if (product.meta) {
-			const meta = product.meta as Record<string, any>
-			if (meta.duration) replacements.duration = meta.duration
-		}
-		if (product.highlights?.length) {
-			replacements.includes = product.highlights.slice(0, 4).join(' | ')
-		}
-	}
+	const replacements = buildPosterData(entry, product)
 
 	let prompt = promptConfig.design_prompt
 	for (const [key, value] of Object.entries(replacements)) {
@@ -480,26 +522,75 @@ Note: Using stock/custom images, not product-specific content.`)
 
 		let imageBuffers: Buffer[]
 
-		// ── Template + product image → OpenAI image edit (image-to-image) ──
+		// ── Template + product image → programmatic poster renderer ──
 		if (template && product?.image_urls?.length) {
 			const referenceImagePath = await this.downloadImage(product.image_urls[0], 'ref')
 			const referenceBuffer = fs.readFileSync(referenceImagePath)
 			this.cleanup(referenceImagePath)
 
-			// Map aspect ratio to OpenAI size
-			const openaiSizeMap: Record<string, '1024x1024' | '1024x1536' | '1536x1024'> = {
-				'1:1': '1024x1024',
-				'4:5': '1024x1536',
-				'1.91:1': '1536x1024',
+			const data = buildPosterData(entry, product)
+			const layoutMap: Record<string, 'brush-script' | 'heritage' | 'bold-adventure' | 'explorer' | 'lifestyle'> = {
+				'brush-script-escape': 'brush-script',
+				'heritage-cinematic': 'heritage',
+				'bold-adventure': 'bold-adventure',
+				'explorer-minimal': 'explorer',
+				'lifestyle-editorial': 'lifestyle',
 			}
-			const openaiSize = openaiSizeMap[input.aspect_ratio || ''] || '1024x1536'
+			const layout = layoutMap[template.slug] || 'brush-script' as const
+			const aspectRatio = (input.aspect_ratio as AspectRatio) || resolveAspectRatio(entry.platform, entry.post_type)
 
-			imageBuffers = await aiService.editImage({
-				imageBuffer: referenceBuffer,
-				prompt: imagePrompt,
-				size: openaiSize,
-				quality: 'high',
-			})
+			// For lifestyle-editorial: generate editorial copy via AI
+			let lfSubheadline = data.subheadline
+			let lfTagline = data.tagline
+			if (template.slug === 'lifestyle-editorial') {
+				try {
+					const copy = await aiService.callOpenAIRaw<{ tagline: string; description: string }>(`You are a world-class travel copywriter at a FAANG-level social media agency. Write luxury editorial copy for a travel poster.
+
+RESPOND WITH VALID JSON ONLY:
+{"tagline":"short emotional subtitle — max 6 words, elegant, evocative","description":"2-3 short poetic lines about the destination experience — max 60 characters total, aspirational, editorial magazine tone"}
+
+RULES:
+- Tagline: dreamy, evocative, max 6 words (e.g. "Serenity, Shores & Island Magic" or "Where Dreams Meet the Horizon")
+- Description: 2-3 short poetic lines, conversational luxury tone, max 60 chars (e.g. "From hidden gems\\nto iconic views,\\ndiscover unforgettable\\nmoments.")
+- No hashtags, no emojis, no exclamation marks
+- Think: Condé Nast Traveler, AFAR Magazine, Kinfolk editorial style`, `Destination: ${entry.title}\nBrief: ${entry.description || 'Premium travel experience'}\n${product ? `Product: ${product.name}` : ''}`)
+
+					lfTagline = copy.tagline || lfTagline
+					lfSubheadline = copy.description || lfSubheadline
+				} catch (err: any) {
+					logger.warn(`Lifestyle editorial copy generation failed: ${err.message}`)
+				}
+			}
+
+			let posterBuffer = await imageOverlayService.renderPoster(referenceBuffer, {
+				brand_name: data.brand_name,
+				headline: data.headline,
+				subheadline: lfSubheadline,
+				tagline: lfTagline,
+				price: data.price,
+				includes: data.includes,
+				dates: data.dates,
+				duration: data.duration,
+				contact: data.contact,
+				layout,
+			}, aspectRatio)
+
+			// Lifestyle Editorial: enhance with AI to add a photorealistic human traveler
+			if (template.slug === 'lifestyle-editorial') {
+				console.log('>>> Lifestyle editorial: calling Flux Kontext Pro to add human traveler...')
+				const enhanced = await aiService.editImage({
+					imageBuffer: posterBuffer,
+					prompt: LIFESTYLE_HUMAN_PROMPT,
+					model: 'flux-kontext',
+				})
+				console.log(`>>> Flux Kontext returned ${enhanced.length} image(s)`)
+				if (enhanced.length > 0) {
+					posterBuffer = await imageOverlayService.enforceFormatAndLogo(enhanced[0], aspectRatio, layout)
+					console.log('>>> Lifestyle editorial: human element added + logo re-applied')
+				}
+			}
+
+			imageBuffers = [posterBuffer]
 		} else {
 			// ── No template or no product image → Freepik text-to-image ──
 			const sizeMap: Record<string, 'square_1_1' | 'portrait_3_4' | 'landscape_4_3'> = {
@@ -601,8 +692,56 @@ Note: Using AI-generated imagery.`)
 		product?: Product
 		additional_prompt?: string
 	}): Promise<string[]> {
-		const { image_urls, template, entry, product, additional_prompt } = input
-		const designPrompt = buildDesignPrompt(template.prompt_config, entry, product, additional_prompt)
+		const { image_urls, template, entry, product } = input
+		const data = buildPosterData(entry, product)
+
+		// Map template slug to poster layout
+		const layoutMap: Record<string, 'brush-script' | 'heritage' | 'bold-adventure' | 'explorer' | 'lifestyle'> = {
+			'brush-script-escape': 'brush-script',
+			'heritage-cinematic': 'heritage',
+			'bold-adventure': 'bold-adventure',
+			'explorer-minimal': 'explorer',
+			'lifestyle-editorial': 'lifestyle',
+		}
+
+		const layout = layoutMap[template.slug] || 'brush-script' as const
+		const aspectRatio = resolveAspectRatio(entry.platform, entry.post_type)
+
+		// For lifestyle-editorial: generate a short editorial tagline + description via AI
+		let lifestyleTagline = data.tagline
+		let lifestyleDesc = data.subheadline
+		if (template.slug === 'lifestyle-editorial') {
+			try {
+				const copy = await aiService.callOpenAIRaw<{ tagline: string; description: string }>(`You are a world-class travel copywriter at a FAANG-level social media agency. Write luxury editorial copy for a travel poster.
+
+RESPOND WITH VALID JSON ONLY:
+{"tagline":"short emotional subtitle — max 6 words, elegant, evocative","description":"2-3 short poetic lines about the destination experience — max 60 characters total, aspirational, editorial magazine tone"}
+
+RULES:
+- Tagline: dreamy, evocative, max 6 words (e.g. "Serenity, Shores & Island Magic" or "Where Dreams Meet the Horizon")
+- Description: 2-3 short poetic lines, conversational luxury tone, max 60 chars (e.g. "From hidden gems\\nto iconic views,\\ndiscover unforgettable\\nmoments.")
+- No hashtags, no emojis, no exclamation marks
+- Think: Condé Nast Traveler, AFAR Magazine, Kinfolk editorial style`, `Destination: ${entry.title}\nBrief: ${entry.description || 'Premium travel experience'}\n${product ? `Product: ${product.name}` : ''}`)
+
+				lifestyleTagline = copy.tagline || lifestyleTagline
+				lifestyleDesc = copy.description || lifestyleDesc
+			} catch (err: any) {
+				logger.warn(`Lifestyle editorial copy generation failed, using defaults: ${err.message}`)
+			}
+		}
+
+		const posterConfig = {
+			brand_name: data.brand_name,
+			headline: data.headline,
+			subheadline: lifestyleDesc,
+			tagline: lifestyleTagline,
+			price: data.price,
+			includes: data.includes,
+			dates: data.dates,
+			duration: data.duration,
+			contact: data.contact,
+			layout,
+		}
 
 		const resultUrls: string[] = []
 
@@ -611,14 +750,23 @@ Note: Using AI-generated imagery.`)
 			const imageBuffer = fs.readFileSync(localPath)
 			this.cleanup(localPath)
 
-			const editedBuffers = await aiService.editImage({
-				imageBuffer,
-				prompt: designPrompt,
-				size: '1024x1536',
-				quality: 'high',
-			})
+			let edited = await imageOverlayService.renderPoster(imageBuffer, posterConfig, aspectRatio)
 
-			const edited = editedBuffers[0]
+			// Lifestyle Editorial: enhance with AI to add a photorealistic human traveler
+			if (template.slug === 'lifestyle-editorial') {
+				console.log('>>> Lifestyle editorial: calling Flux Kontext Pro to add human traveler...')
+				const enhanced = await aiService.editImage({
+					imageBuffer: edited,
+					prompt: LIFESTYLE_HUMAN_PROMPT,
+					model: 'flux-kontext',
+				})
+				console.log(`>>> Flux Kontext returned ${enhanced.length} image(s)`)
+				if (enhanced.length > 0) {
+					edited = await imageOverlayService.enforceFormatAndLogo(enhanced[0], aspectRatio, layout)
+					console.log('>>> Lifestyle editorial: human element added + logo re-applied')
+				}
+			}
+
 			let url: string
 			if (cloudinaryService.enabled) {
 				const uploaded = await cloudinaryService.uploadBuffer(edited, { folder: 'rayna/designed-posters' })

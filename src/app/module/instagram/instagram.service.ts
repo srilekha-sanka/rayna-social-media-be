@@ -43,9 +43,7 @@ class InstagramService {
 
 		const creationId = containerData.id
 
-		if (media_type === 'VIDEO' || media_type === 'REELS') {
-			await this.waitForVideoProcessing(creationId, access_token)
-		}
+		await this.waitForMediaProcessing(creationId, access_token)
 
 		const publishRes = await fetch(`${IG_API_BASE}/${ig_user_id}/media_publish`, {
 			method: 'POST',
@@ -157,24 +155,24 @@ class InstagramService {
 
 	// ─── Helpers ───────────────────────────────────────────────
 
-	private async waitForVideoProcessing(creationId: string, accessToken: string): Promise<void> {
+	private async waitForMediaProcessing(creationId: string, accessToken: string): Promise<void> {
 		const maxAttempts = 30
 		let attempts = 0
 
 		while (attempts < maxAttempts) {
-			await new Promise((resolve) => setTimeout(resolve, 10000))
-			attempts++
-
 			const statusRes = await fetch(`${IG_API_BASE}/${creationId}?fields=status_code&access_token=${accessToken}`)
 			const statusData: any = await statusRes.json()
 
 			if (statusData.status_code === 'FINISHED') return
 			if (statusData.status_code === 'ERROR') {
-				throw new BadRequestError('Video processing failed on Instagram')
+				throw new BadRequestError(`Media processing failed on Instagram: ${statusData.error?.message || 'Unknown error'}`)
 			}
+
+			await new Promise((resolve) => setTimeout(resolve, 3000))
+			attempts++
 		}
 
-		throw new BadRequestError('Video processing timed out (exceeded 5 minutes)')
+		throw new BadRequestError('Media processing timed out')
 	}
 }
 

@@ -1320,7 +1320,7 @@ Note: Using AI-designed poster with "${template.name}" style.`)
 		const systemPrompt = `You are a social media content strategist for Rayna Tours, Dubai's top tours & activities company.
 
 RESPOND WITH VALID JSON ONLY — no markdown, no explanation:
-{"entries":[{"date":"YYYY-MM-DD","title":"under 60 chars","description":"creative brief for designer/copywriter","content_type":"PRODUCT_PROMO|FESTIVAL_GREETING|ENGAGEMENT|VALUE|BRAND_AWARENESS","post_type":"${input.post_types.join('|')}","platform":"platform_name","product_id":"uuid or null","ai_rationale":"why this content today"}]}
+{"entries":[{"date":"YYYY-MM-DD","title":"exactly 2 words — must include the product/place name","description":"creative brief for designer/copywriter","content_type":"PRODUCT_PROMO|FESTIVAL_GREETING|ENGAGEMENT|VALUE|BRAND_AWARENESS","post_type":"${input.post_types.join('|')}","platform":"platform_name","product_id":"uuid or null","ai_rationale":"why this content today"}]}
 
 RULES:
 - Generate EXACTLY ${totalEntries} entries (${totalDays} days × ${input.platforms.length} platform(s) × ${input.posts_per_day}/day)
@@ -1335,6 +1335,7 @@ RULES:
 - Tone: ${input.tone}. Target: ${input.target_audience}. Region: ${input.region}.
 - Language: ALL captions, titles, and descriptions MUST be written in ${input.language}.
 ${postTypeRule}
+- TITLE RULE (STRICT): Every title MUST be EXACTLY 2 words and MUST include the product or place name (e.g. "Dubai Frame", "Desert Safari", "Burj Khalifa", "Museum Future"). For non-product posts, use the relevant place or attraction name. Never generate generic titles without a specific name.
 - Description = visual direction + copy angle + CTA + must match the post_type for that day
 - Platform rules: Instagram=visual+reels, TikTok=trends+hooks, Facebook=community+links, X=concise+witty, YouTube=SEO titles, LinkedIn=professional`
 

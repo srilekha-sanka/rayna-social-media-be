@@ -1,15 +1,17 @@
 import OpenAI from 'openai'
-import fs from 'fs'
-import path from 'path'
-import os from 'os'
 import fetch from 'node-fetch'
-import FormData from 'form-data'
+import { fal } from '@fal-ai/client'
 import { env } from '../../../db/config/env.config'
 import { IServiceResponse } from '../../interfaces/IServiceResponse'
 import { BadRequestError } from '../../errors/api-errors'
 import { logger } from '../../common/logger/logging'
 
 const openai = new OpenAI({ apiKey: env.openai.apiKey })
+
+// Configure fal.ai client
+if (env.fal.apiKey) {
+	fal.config({ credentials: env.fal.apiKey })
+}
 
 interface CaptionInput {
 	product_name: string
@@ -214,74 +216,65 @@ Design a ${input.slide_count}-slide carousel that makes someone book this experi
 	}
 
 	/**
-	 * Edit/transform an image using OpenAI gpt-image-1.
-	 * Takes a reference image (Buffer) + design prompt → returns transformed image as Buffer.
+	 * Edit an image using Fal.ai Flux Kontext — overlays text on the original photo
+	 * without regenerating or distorting the background image.
 	 */
 	async editImage(input: {
 		imageBuffer: Buffer
 		prompt: string
+		model?: 'flux-kontext' | 'ideogram'
 		size?: '1024x1024' | '1024x1536' | '1536x1024'
 		quality?: 'low' | 'medium' | 'high'
 	}): Promise<Buffer[]> {
-		if (!env.openai.apiKey) throw new BadRequestError('OPENAI_API_KEY is not configured')
+		if (!env.fal.apiKey) throw new BadRequestError('FAL_API_KEY is not configured')
 
-		logger.info(`OpenAI image edit: "${input.prompt.slice(0, 80)}..."`)
+		const model = input.model || 'flux-kontext'
+		logger.info(`Fal.ai image edit [${model}]: "${input.prompt.slice(0, 80)}..."`)
 
-		// Trim prompt for image model — remove verbose instructions, keep design direction
-		const trimmedPrompt = input.prompt
-			.replace(/DO NOT:[\s\S]*?OUTPUT:/g, 'OUTPUT:')
-			.replace(/Avoid:[\s\S]*?$/gm, '')
-			.slice(0, 4000)
+		const base64Image = `data:image/png;base64,${input.imageBuffer.toString('base64')}`
 
-		// Direct HTTP request to bypass SDK's FormData issues on Node 16
-		const form = new FormData()
-		form.append('model', 'gpt-image-1')
-		form.append('prompt', trimmedPrompt)
-		form.append('size', input.size || '1024x1536')
-		form.append('quality', input.quality || 'high')
-		form.append('image', input.imageBuffer, { filename: 'reference.png', contentType: 'image/png' })
+		let result: any
 
-		const controller = new AbortController()
-		const timeout = setTimeout(() => controller.abort(), 600_000) // 10 min timeout for high quality
-
-		let response: import('node-fetch').Response
-		try {
-			response = await fetch('https://api.openai.com/v1/images/edits', {
-				method: 'POST',
-				headers: {
-					'Authorization': `Bearer ${env.openai.apiKey}`,
-					...form.getHeaders(),
+		if (model === 'ideogram') {
+			result = await fal.subscribe('fal-ai/ideogram/v3/edit' as any, {
+				input: {
+					image_url: base64Image,
+					prompt: input.prompt,
+					magic_prompt_option: 'ON',
+					num_images: 1,
 				},
-				body: form,
-				signal: controller.signal as any,
-			})
-		} catch (err: any) {
-			if (err.name === 'AbortError') throw new BadRequestError('OpenAI image edit timed out after 10 minutes')
-			throw err
-		} finally {
-			clearTimeout(timeout)
+				logs: true,
+				onQueueUpdate: (update: any) => {
+					if (update.status === 'IN_PROGRESS' && update.logs?.length) {
+						logger.info(`Fal.ai ideogram progress: ${update.logs[update.logs.length - 1].message}`)
+					}
+				},
+			}) as any
+		} else {
+			result = await fal.subscribe('fal-ai/flux-kontext/dev' as any, {
+				input: {
+					image_url: base64Image,
+					prompt: input.prompt,
+					num_images: 1,
+					output_format: 'png',
+				},
+				logs: true,
+				onQueueUpdate: (update: any) => {
+					if (update.status === 'IN_PROGRESS' && update.logs?.length) {
+						logger.info(`Fal.ai kontext progress: ${update.logs[update.logs.length - 1].message}`)
+					}
+				},
+			}) as any
 		}
 
-		if (!response.ok) {
-			const errorBody = await response.text()
-			logger.error(`OpenAI image edit failed (${response.status}): ${errorBody}`)
-			throw new BadRequestError(`OpenAI image edit failed (${response.status}): ${errorBody}`)
-		}
-
-		const json = await response.json() as { data: Array<{ b64_json?: string; url?: string }> }
+		const images = result.data?.images || result.images
+		if (!images?.length) throw new BadRequestError('Fal.ai returned no images')
 
 		const buffers: Buffer[] = []
-		for (const img of json.data || []) {
-			if (img.b64_json) {
-				buffers.push(Buffer.from(img.b64_json, 'base64'))
-			} else if (img.url) {
-				const imgRes = await fetch(img.url)
-				const arrBuf = await imgRes.buffer()
-				buffers.push(arrBuf)
-			}
+		for (const img of images) {
+			const imgRes = await fetch(img.url)
+			buffers.push(await imgRes.buffer())
 		}
-
-		if (!buffers.length) throw new BadRequestError('OpenAI image edit returned no images')
 
 		return buffers
 	}
