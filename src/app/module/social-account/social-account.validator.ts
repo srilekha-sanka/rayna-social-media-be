@@ -18,7 +18,9 @@ export const getAuthUrlSchema = Joi.object({
 		.lowercase()
 		.valid(...VALID_PLATFORMS)
 		.required(),
-	redirect_url: Joi.string().uri().optional(),
+	connection_type: Joi.string()
+		.valid('facebook', 'instagram')
+		.optional(),
 })
 
 export const finalizeConnectionSchema = Joi.object({

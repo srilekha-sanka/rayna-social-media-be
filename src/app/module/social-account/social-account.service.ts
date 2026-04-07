@@ -1,4 +1,4 @@
-import { WhereOptions } from 'sequelize'
+import { WhereOptions, Op } from 'sequelize'
 import SocialAccount from './social-account.model'
 import User from '../user/user.model'
 import { postForMeService } from '../postforme/postforme.service'
@@ -12,18 +12,24 @@ const ACCOUNT_INCLUDES = [
 
 class SocialAccountService {
 	/**
-	 * Get OAuth URL from PostForMe for a given platform.
+	 * Step 1 of OAuth: Get auth URL from PostForMe.
+	 * Creates a PENDING record so we know which user initiated the flow
+	 * when PostForMe redirects back (GET callback has no JWT).
 	 */
-	async getAuthUrl(data: { platform: string; redirect_url?: string }, userId: string): Promise<IServiceResponse> {
+	async getAuthUrl(data: { platform: string; connection_type?: string }, userId: string): Promise<IServiceResponse> {
 		try {
-			const { url } = await postForMeService.getAuthUrl(data.platform)
+			const { url } = await postForMeService.getAuthUrl(data.platform, data.connection_type)
+
+			// Track who started this OAuth flow
+			await SocialAccount.create({
+				platform: data.platform as any,
+				status: 'PENDING',
+				connected_by: userId,
+			} as any)
 
 			return {
 				statusCode: 200,
-				payload: {
-					auth_url: url,
-					platform: data.platform,
-				},
+				payload: { auth_url: url, platform: data.platform },
 				message: 'OAuth URL generated successfully',
 			}
 		} catch (err: any) {
@@ -33,16 +39,83 @@ class SocialAccountService {
 	}
 
 	/**
-	 * Sync accounts from PostForMe after OAuth callback.
-	 * PostForMe handles the OAuth exchange internally — we just need to
-	 * pull the latest accounts and sync them to our local DB.
+	 * Step 2a: Sync from PostForMe browser redirect (GET /callback).
+	 * No JWT available — we resolve the user from the most recent PENDING record.
+	 * Returns synced accounts for the callback HTML response.
+	 */
+	async syncFromRedirect(
+		platform: string,
+		pfmAccountIds: string[]
+	): Promise<{ accounts: SocialAccount[]; count: number }> {
+		// Find who initiated this OAuth (most recent PENDING record for this platform)
+		const pendingRecord = await SocialAccount.findOne({
+			where: { platform, status: 'PENDING', is_active: true },
+			order: [['createdAt', 'DESC']],
+		})
+
+		const connectedBy = pendingRecord?.connected_by
+
+		// Clean up ALL stale PENDING records for this platform (older than 30 min get cleaned too)
+		await SocialAccount.destroy({
+			where: {
+				platform,
+				status: 'PENDING',
+				is_active: true,
+			},
+		})
+
+		if (!connectedBy) {
+			logger.warn(`[OAuth] No pending record found for ${platform} — cannot attribute connection to user`)
+			throw new BadRequestError('OAuth session expired. Please try connecting again from the dashboard.')
+		}
+
+		const synced: SocialAccount[] = []
+
+		for (const pfmAccountId of pfmAccountIds) {
+			try {
+				// Check if we already track this PostForMe account
+				const existing = await SocialAccount.findOne({
+					where: { postforme_account_id: pfmAccountId, is_active: true },
+				})
+
+				if (existing) {
+					const pfmAccount = await postForMeService.getAccount(pfmAccountId)
+					await existing.update({
+						username: pfmAccount.username || existing.username,
+						status: 'CONNECTED',
+						connected_at: new Date(),
+					})
+					synced.push(existing)
+				} else {
+					const pfmAccount = await postForMeService.getAccount(pfmAccountId)
+					const account = await SocialAccount.create({
+						platform: platform as any,
+						postforme_account_id: pfmAccount.id,
+						username: pfmAccount.username,
+						platform_user_id: pfmAccount.external_id,
+						status: 'CONNECTED',
+						connected_at: new Date(),
+						connected_by: connectedBy,
+					} as any)
+					synced.push(account)
+				}
+			} catch (err: any) {
+				logger.error(`[OAuth] Failed to sync account ${pfmAccountId}: ${err.message}`)
+			}
+		}
+
+		return { accounts: synced, count: synced.length }
+	}
+
+	/**
+	 * Step 2b: Authenticated sync (POST /callback) — called from frontend/curl with JWT.
+	 * Pulls all connected accounts for a platform from PostForMe.
 	 */
 	async finalizeConnection(
-		data: { platform: string; code?: string; state?: string },
+		data: { platform: string },
 		userId: string
 	): Promise<IServiceResponse> {
 		try {
-			// PostForMe handles the OAuth exchange; we sync accounts for this platform
 			const { data: pfmAccounts } = await postForMeService.listAccounts({
 				platform: data.platform,
 				status: 'connected',
@@ -55,12 +128,8 @@ class SocialAccountService {
 			const synced: SocialAccount[] = []
 
 			for (const pfmAccount of pfmAccounts) {
-				// Check if we already track this PostForMe account
 				const existing = await SocialAccount.findOne({
-					where: {
-						postforme_account_id: pfmAccount.id,
-						is_active: true,
-					},
+					where: { postforme_account_id: pfmAccount.id, is_active: true },
 				})
 
 				if (existing) {
@@ -84,6 +153,11 @@ class SocialAccountService {
 				}
 			}
 
+			// Clean up any leftover PENDING records
+			await SocialAccount.destroy({
+				where: { platform: data.platform, status: 'PENDING', connected_by: userId },
+			})
+
 			const payload = synced.length === 1
 				? await SocialAccount.findByPk(synced[0].id, { include: ACCOUNT_INCLUDES })
 				: await SocialAccount.findAll({
@@ -104,48 +178,6 @@ class SocialAccountService {
 	}
 
 	/**
-	 * Sync account(s) from PostForMe OAuth redirect.
-	 * Called by the GET /callback handler when PostForMe redirects the browser back.
-	 * No userId available (no JWT), so we use a system-level sync.
-	 */
-	async syncFromRedirect(platform: string, pfmAccountIds: string[]): Promise<void> {
-		for (const pfmAccountId of pfmAccountIds) {
-			const existing = await SocialAccount.findOne({
-				where: { postforme_account_id: pfmAccountId, is_active: true },
-			})
-
-			if (existing) {
-				// Refresh status
-				try {
-					const pfmAccount = await postForMeService.getAccount(pfmAccountId)
-					await existing.update({
-						username: pfmAccount.username || existing.username,
-						status: 'CONNECTED',
-						connected_at: new Date(),
-					})
-				} catch (err: any) {
-					logger.error(`Failed to refresh account ${pfmAccountId}: ${err.message}`)
-				}
-			} else {
-				try {
-					const pfmAccount = await postForMeService.getAccount(pfmAccountId)
-					await SocialAccount.create({
-						platform: platform as any,
-						postforme_account_id: pfmAccount.id,
-						username: pfmAccount.username,
-						platform_user_id: pfmAccount.external_id,
-						status: 'CONNECTED',
-						connected_at: new Date(),
-						connected_by: '00000000-0000-0000-0000-000000000000', // system sync
-					} as any)
-				} catch (err: any) {
-					logger.error(`Failed to sync account ${pfmAccountId}: ${err.message}`)
-				}
-			}
-		}
-	}
-
-	/**
 	 * List all social accounts with optional filters.
 	 */
 	async findAll(query: {
@@ -157,7 +189,7 @@ class SocialAccountService {
 		const { page, limit, platform, status } = query
 		const offset = (page - 1) * limit
 
-		const where: WhereOptions = { is_active: true }
+		const where: WhereOptions = { is_active: true, status: { [Op.ne]: 'PENDING' } }
 
 		if (platform) where.platform = platform
 		if (status) where.status = status
@@ -203,13 +235,11 @@ class SocialAccountService {
 			throw new NotFoundError('Social account not found')
 		}
 
-		// Disconnect from PostForMe if connected
 		if (account.postforme_account_id) {
 			try {
 				await postForMeService.disconnectAccount(account.postforme_account_id)
 			} catch (err: any) {
 				logger.error(`Failed to disconnect from PostForMe: ${err.message}`)
-				// Continue with local disconnection even if PostForMe fails
 			}
 		}
 

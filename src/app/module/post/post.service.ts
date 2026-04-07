@@ -205,7 +205,7 @@ class PostService {
 	 * Publish an approved post to all target platforms via PostForMe.
 	 * APPROVED → PUBLISHING → PUBLISHED / FAILED
 	 */
-	async publish(id: string, userId: string): Promise<IServiceResponse> {
+	async publish(id: string, userId: string, socialAccountIds: string[]): Promise<IServiceResponse> {
 		const post = await Post.findByPk(id)
 
 		if (!post) throw new NotFoundError('Post not found')
@@ -217,7 +217,7 @@ class PostService {
 		await post.update({ status: 'PUBLISHING' })
 
 		try {
-			const pfmResult = await this.publishViaPostForMe(post)
+			const pfmResult = await this.publishViaPostForMe(post, undefined, socialAccountIds)
 
 			await post.update({
 				status: 'PUBLISHED',
@@ -243,7 +243,7 @@ class PostService {
 	 * Schedule an approved post for future publishing via PostForMe.
 	 * APPROVED → SCHEDULED
 	 */
-	async schedule(id: string, scheduledAt: string): Promise<IServiceResponse> {
+	async schedule(id: string, scheduledAt: string, socialAccountIds: string[]): Promise<IServiceResponse> {
 		const post = await Post.findByPk(id)
 
 		if (!post) throw new NotFoundError('Post not found')
@@ -260,7 +260,7 @@ class PostService {
 
 		try {
 			// Create the post on PostForMe with scheduled_at — PFM handles the scheduling
-			const pfmResult = await this.publishViaPostForMe(post, scheduleDate.toISOString())
+			const pfmResult = await this.publishViaPostForMe(post, scheduleDate.toISOString(), socialAccountIds)
 
 			await post.update({
 				status: 'SCHEDULED',
@@ -284,57 +284,30 @@ class PostService {
 	// ── Private Helpers ──────────────────────────────────────────────
 
 	/**
-	 * Resolve PostForMe social_account IDs for the post.
-	 * If social_account_ids are specified, use those exact accounts.
-	 * Otherwise, fall back to all connected accounts for the target platforms.
+	 * Resolve PostForMe social_account IDs from explicit account selection.
+	 * No fallback — caller MUST specify which accounts to post to.
 	 */
-	private async resolvePFMAccountIds(post: Post): Promise<string[]> {
-		const specificIds = post.social_account_ids || []
-
-		if (specificIds.length) {
-			// User picked specific accounts — look them up
-			const accounts = await SocialAccount.findAll({
-				where: {
-					id: specificIds,
-					status: 'CONNECTED',
-					is_active: true,
-				},
-			})
-
-			const pfmIds = accounts
-				.filter((a) => a.postforme_account_id)
-				.map((a) => a.postforme_account_id!)
-
-			if (!pfmIds.length) {
-				throw new BadRequestError('None of the selected social accounts are connected to PostForMe.')
-			}
-
-			return pfmIds
-		}
-
-		// Fallback: all connected accounts for the target platforms
-		const platforms = post.platforms || []
-		if (!platforms.length) {
-			throw new BadRequestError('Post has no target platforms or social accounts selected.')
-		}
-
+	private async resolvePFMAccountIds(socialAccountIds: string[]): Promise<string[]> {
 		const accounts = await SocialAccount.findAll({
 			where: {
-				platform: platforms,
+				id: socialAccountIds,
 				status: 'CONNECTED',
 				is_active: true,
 			},
 		})
+
+		if (accounts.length !== socialAccountIds.length) {
+			const foundIds = accounts.map((a) => a.id)
+			const missing = socialAccountIds.filter((id) => !foundIds.includes(id))
+			throw new BadRequestError(`Social account(s) not found or not connected: ${missing.join(', ')}`)
+		}
 
 		const pfmIds = accounts
 			.filter((a) => a.postforme_account_id)
 			.map((a) => a.postforme_account_id!)
 
 		if (!pfmIds.length) {
-			throw new BadRequestError(
-				`No connected PostForMe accounts found for platform(s): ${platforms.join(', ')}. ` +
-				'Please connect your social accounts first.'
-			)
+			throw new BadRequestError('None of the selected social accounts are linked to PostForMe.')
 		}
 
 		return pfmIds
@@ -359,15 +332,19 @@ class PostService {
 	/**
 	 * Publish (or schedule) a post via PostForMe's unified API.
 	 */
-	private async publishViaPostForMe(post: Post, scheduledAt?: string) {
-		const socialAccountIds = await this.resolvePFMAccountIds(post)
+	private async publishViaPostForMe(post: Post, scheduledAt?: string, socialAccountIds?: string[]) {
+		if (!socialAccountIds?.length) {
+			throw new BadRequestError('No social accounts specified. Select at least one account to publish to.')
+		}
+
+		const pfmAccountIds = await this.resolvePFMAccountIds(socialAccountIds)
 		const caption = this.buildCaption(post)
 
 		const media = (post.media_urls || []).map((url) => ({ url }))
 
 		return postForMeService.createPost({
 			caption,
-			social_accounts: socialAccountIds,
+			social_accounts: pfmAccountIds,
 			scheduled_at: scheduledAt || null,
 			media: media.length ? media : undefined,
 			external_id: post.id,

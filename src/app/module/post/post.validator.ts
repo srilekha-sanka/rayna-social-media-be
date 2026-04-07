@@ -26,8 +26,15 @@ export const updatePostSchema = Joi.object({
 	scheduled_at: Joi.string().isoDate().optional(),
 })
 
+export const publishPostSchema = Joi.object({
+	social_account_ids: Joi.array().items(Joi.string().uuid()).min(1).required()
+		.messages({ 'array.min': 'You must select at least one social account to publish to.' }),
+})
+
 export const schedulePostSchema = Joi.object({
 	scheduled_at: Joi.string().isoDate().required(),
+	social_account_ids: Joi.array().items(Joi.string().uuid()).min(1).required()
+		.messages({ 'array.min': 'You must select at least one social account to schedule to.' }),
 })
 
 export const rejectPostSchema = Joi.object({

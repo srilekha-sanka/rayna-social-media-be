@@ -93,7 +93,21 @@ class PostForMeService {
 		if (!response.ok) {
 			const errorBody = await response.text()
 			logger.error(`PostForMe API error: ${response.status} ${errorBody}`)
-			throw new Error(`PostForMe API error: ${response.status} - ${errorBody}`)
+
+			// Parse the error for a human-readable message
+			let friendlyMessage = `PostForMe API error (${response.status})`
+			try {
+				const parsed = JSON.parse(errorBody)
+				if (parsed.message?.includes('credentials not found')) {
+					friendlyMessage = `This platform is not yet configured. Please enable it in your PostForMe dashboard at postforme.dev`
+				} else if (parsed.message) {
+					friendlyMessage = parsed.message
+				}
+			} catch {
+				// raw text fallback
+			}
+
+			throw new Error(friendlyMessage)
 		}
 
 		const text = await response.text()
@@ -102,11 +116,22 @@ class PostForMeService {
 
 	// ── Social Account OAuth ─────────────────────────────────────────
 
-	async getAuthUrl(platform: string): Promise<PFMAuthUrlResponse> {
-		return this.request<PFMAuthUrlResponse>('POST', '/v1/social-accounts/auth-url', {
+	async getAuthUrl(platform: string, connectionType?: string): Promise<PFMAuthUrlResponse> {
+		const body: Record<string, any> = {
 			platform,
 			permissions: ['posts', 'feeds'],
-		})
+		}
+
+		// Instagram requires platform_data.instagram.connection_type
+		if (platform === 'instagram') {
+			body.platform_data = {
+				instagram: {
+					connection_type: connectionType || 'instagram',
+				},
+			}
+		}
+
+		return this.request<PFMAuthUrlResponse>('POST', '/v1/social-accounts/auth-url', body)
 	}
 
 	// ── Social Accounts ──────────────────────────────────────────────
