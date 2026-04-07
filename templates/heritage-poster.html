@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+	* { margin: 0; padding: 0; box-sizing: border-box; }
+
+	body {
+		width: var(--viewport-width);
+		height: var(--viewport-height);
+		overflow: hidden;
+		background: transparent;
+	}
+
+	.container {
+		width: 100%;
+		height: 100%;
+		position: relative;
+	}
+
+	/* ── Gradients ── */
+	.top-vignette {
+		position: absolute;
+		top: 0; left: 0; right: 0;
+		height: 18%;
+		background: linear-gradient(to bottom, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0) 100%);
+	}
+	.bottom-gradient {
+		position: absolute;
+		bottom: 0; left: 0; right: 0;
+		height: 60%;
+		background: linear-gradient(
+			to bottom,
+			rgba(0,0,0,0) 0%,
+			rgba(0,0,0,0.3) 15%,
+			rgba(0,0,0,0.6) 35%,
+			rgba(0,0,0,0.85) 60%,
+			rgba(0,0,0,0.95) 100%
+		);
+	}
+
+	.content {
+		position: absolute;
+		top: 0; left: 0; right: 0; bottom: 0;
+	}
+
+	/* ── Massive script headline (destination name) ── */
+	.script-headline {
+		position: absolute;
+		top: 12%;
+		width: 100%;
+		text-align: center;
+		font-family: 'Great Vibes', 'Dancing Script', cursive;
+		font-size: var(--headline-font-size, 20vh);
+		color: #F5F0E8;
+		line-height: 0.9;
+		text-shadow: 2px 4px 8px rgba(0,0,0,0.85);
+	}
+
+	/* ── "THE" label ── */
+	.the-label {
+		position: absolute;
+		top: 70%;
+		width: 100%;
+		text-align: center;
+		font-family: Georgia, 'Times New Roman', serif;
+		font-size: 2.2vh;
+		font-weight: 600;
+		color: #F5F0E8;
+		letter-spacing: 6px;
+		text-shadow: 0 2px 4px rgba(0,0,0,0.6);
+	}
+
+	/* ── "BALI EXPERIENCE" ── */
+	.main-title {
+		position: absolute;
+		top: 75%;
+		width: 100%;
+		text-align: center;
+		padding: 0 5%;
+		font-family: Georgia, 'Times New Roman', serif;
+		font-size: 4.5vh;
+		font-weight: 700;
+		color: #F5F0E8;
+		letter-spacing: 4px;
+		text-shadow: 0 2px 4px rgba(0,0,0,0.6);
+	}
+
+	/* ── "HERITAGE . CULTURE . ESCAPE" ── */
+	.keywords {
+		position: absolute;
+		top: 63%;
+		width: 100%;
+		text-align: center;
+		font-family: Georgia, 'Times New Roman', serif;
+		font-size: 1.3vh;
+		color: rgba(245,240,232,0.8);
+		letter-spacing: 4px;
+		text-shadow: 0 2px 3px rgba(0,0,0,0.6);
+	}
+
+	/* ── Divider ── */
+	.divider {
+		position: absolute;
+		top: 55.5%;
+		left: 50%;
+		transform: translateX(-50%);
+		width: 6%;
+		height: 1px;
+		background: rgba(245,240,232,0.35);
+	}
+
+	/* ── Bottom split section ── */
+	.bottom-section {
+		position: absolute;
+		top: 79%;
+		left: 7%;
+		right: 7%;
+		display: flex;
+		justify-content: space-between;
+	}
+
+	/* Vertical gold divider */
+	.vert-divider {
+		width: 1px;
+		background: rgba(200,169,110,0.4);
+		align-self: stretch;
+	}
+
+	/* Left: Includes */
+	.left-col {
+		flex: 1;
+		padding-right: 4%;
+	}
+	.inc-label {
+		font-family: 'Great Vibes', cursive;
+		font-size: 3vh;
+		color: #F5F0E8;
+		text-shadow: 0 2px 3px rgba(0,0,0,0.6);
+	}
+	.inc-item {
+		font-family: 'Montserrat', Arial, sans-serif;
+		font-size: 1.3vh;
+		font-weight: 600;
+		color: rgba(245,240,232,0.85);
+		letter-spacing: 1.5px;
+		line-height: 2.2;
+		text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+	}
+
+	/* Right: Duration + Price */
+	.right-col {
+		flex: 1;
+		padding-left: 4%;
+		text-align: right;
+	}
+	.duration-text {
+		font-family: 'Montserrat', Arial, sans-serif;
+		font-size: 1.8vh;
+		font-weight: 700;
+		color: #F5F0E8;
+		letter-spacing: 2px;
+		text-shadow: 0 2px 3px rgba(0,0,0,0.6);
+	}
+	.starting-label {
+		margin-top: 1.5vh;
+		font-family: 'Montserrat', Arial, sans-serif;
+		font-size: 1.2vh;
+		font-weight: 500;
+		color: rgba(245,240,232,0.8);
+		letter-spacing: 2px;
+		text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+	}
+	.price-line {
+		display: flex;
+		align-items: baseline;
+		justify-content: flex-end;
+		gap: 0.8vh;
+		margin-top: 0.3vh;
+	}
+	.price-currency {
+		font-family: 'Montserrat', Arial, sans-serif;
+		font-size: 2.5vh;
+		font-weight: 700;
+		color: #F5F0E8;
+		letter-spacing: 1px;
+		text-shadow: 0 2px 3px rgba(0,0,0,0.6);
+	}
+	.price-amount {
+		font-family: Georgia, 'Times New Roman', serif;
+		font-size: 5vh;
+		font-weight: 700;
+		color: #F5F0E8;
+		letter-spacing: 1px;
+		text-shadow: 0 2px 4px rgba(0,0,0,0.6);
+	}
+
+	/* ── Brand footer ── */
+	.brand-footer {
+		position: absolute;
+		bottom: 3%;
+		width: 100%;
+		text-align: center;
+	}
+	.brand-name {
+		font-family: 'Montserrat', Arial, sans-serif;
+		font-size: 1.4vh;
+		font-weight: 600;
+		color: #F5F0E8;
+		letter-spacing: 4px;
+		text-shadow: 0 2px 3px rgba(0,0,0,0.6);
+	}
+	.brand-tagline {
+		font-family: 'Great Vibes', cursive;
+		font-size: 1.8vh;
+		color: rgba(245,240,232,0.65);
+		margin-top: 0.3vh;
+		text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+	}
+</style>
+</head>
+<body>
+	<div class="container">
+		<div class="top-vignette"></div>
+		<div class="bottom-gradient"></div>
+		<div class="content">
+			<div class="script-headline" style="--headline-font-size: {{headlineFontSize}}">{{headline}}</div>
+
+			<div class="the-label">THE</div>
+			<div class="main-title">{{subheadline}}</div>
+			<div class="keywords">{{tagline}}</div>
+			<div class="divider"></div>
+
+			<div class="bottom-section">
+				<div class="left-col">
+					<div class="inc-label">Includes:</div>
+					<div class="inc-item">{{includes}}</div>
+				</div>
+				<div class="vert-divider"></div>
+				<div class="right-col">
+					<div class="duration-text">{{dates}}</div>
+					<div class="starting-label">STARTING FROM</div>
+					<div class="price-line">
+						<span class="price-currency">{{currency}}</span>
+						<span class="price-amount">{{amount}}</span>
+					</div>
+				</div>
+			</div>
+
+			<div class="brand-footer">
+				<div class="brand-name">RAYNA TOURS</div>
+				<div class="brand-tagline">{{brandTagline}}</div>
+			</div>
+		</div>
+	</div>
+</body>
+</html>

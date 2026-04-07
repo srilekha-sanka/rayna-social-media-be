@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+	* { margin: 0; padding: 0; box-sizing: border-box; }
+
+	body {
+		width: var(--viewport-width);
+		height: var(--viewport-height);
+		overflow: hidden;
+		background: transparent;
+	}
+
+	.container {
+		width: 100%;
+		height: 100%;
+		position: relative;
+	}
+
+	/* ── Bottom gradient ── */
+	.bottom-gradient {
+		position: absolute;
+		bottom: 0; left: 0; right: 0;
+		height: 32%;
+		background: linear-gradient(
+			to bottom,
+			rgba(0,0,0,0) 0%,
+			rgba(0,0,0,0.45) 45%,
+			rgba(0,0,0,0.85) 100%
+		);
+	}
+
+	.content {
+		position: absolute;
+		top: 0; left: 0; right: 0; bottom: 0;
+	}
+
+	/* ── "Explore" ── */
+	.explore-label {
+		position: absolute;
+		top: 18%;
+		width: 100%;
+		text-align: center;
+		font-family: 'Dancing Script', 'Great Vibes', cursive;
+		font-size: 7vh;
+		font-weight: 700;
+		color: #E9A415;
+		text-shadow: 2px 3px 6px rgba(0,0,0,0.7);
+		line-height: 1;
+	}
+
+	/* ── Headline ── */
+	.headline {
+		position: absolute;
+		top: 20%;
+		width: 100%;
+		text-align: center;
+		padding: 0 4%;
+		font-family: 'Bebas Neue', 'Oswald', Impact, sans-serif;
+		font-size: var(--headline-font-size, 13vh);
+		font-weight: 400;
+		color: #E9A415;
+		letter-spacing: 3px;
+		text-transform: uppercase;
+		line-height: 1;
+		text-shadow: 3px 4px 6px rgba(0,0,0,0.75);
+	}
+
+	/* ── Sub-locations ── */
+	.sub-locations {
+		position: absolute;
+		top: 43%;
+		width: 100%;
+		text-align: center;
+		font-family: 'Oswald', 'Montserrat', Arial, sans-serif;
+		font-size: 1.4vh;
+		font-weight: 700;
+		color: #E9A415;
+		letter-spacing: 4px;
+		text-transform: uppercase;
+		text-shadow: 1px 2px 4px rgba(0,0,0,0.7);
+	}
+
+	/* ── Red banner ── */
+	.banner {
+		position: absolute;
+		bottom: 16%;
+		left: 50%;
+		transform: translateX(-50%);
+		background: #D32F2F;
+		border-radius: 0.6vh;
+		padding: 1.3vh 4vh;
+		box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+		white-space: nowrap;
+	}
+	.banner-text {
+		font-family: 'Oswald', 'Montserrat', Arial, sans-serif;
+		font-size: 2.2vh;
+		font-weight: 700;
+		color: #FFFFFF;
+		letter-spacing: 2px;
+		text-transform: uppercase;
+	}
+
+	/* ── Contact footer ── */
+	.contact-footer {
+		position: absolute;
+		bottom: 3.5%;
+		left: 6%;
+		right: 6%;
+		display: flex;
+		justify-content: space-between;
+	}
+	.contact-item {
+		font-family: 'Oswald', 'Montserrat', Arial, sans-serif;
+		font-size: 1.6vh;
+		font-weight: 700;
+		color: #FFFFFF;
+		letter-spacing: 1px;
+		text-shadow: 2px 3px 6px rgba(0,0,0,0.8);
+	}
+</style>
+</head>
+<body>
+	<div class="container">
+		<div class="bottom-gradient"></div>
+		<div class="content">
+			<div class="explore-label">Explore</div>
+			<div class="headline" style="--headline-font-size: {{headlineFontSize}}">{{headline}}</div>
+			<div class="sub-locations">{{subheadline}}</div>
+
+			<div class="banner">
+				<div class="banner-text">{{bannerText}}</div>
+			</div>
+
+			<div class="contact-footer">
+				<div class="contact-item">{{contactLeft}}</div>
+				<div class="contact-item">{{contactRight}}</div>
+			</div>
+		</div>
+	</div>
+</body>
+</html>
