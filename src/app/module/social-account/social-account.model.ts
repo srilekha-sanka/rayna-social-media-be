@@ -21,7 +21,7 @@ type AccountStatus = 'CONNECTED' | 'EXPIRED' | 'DISCONNECTED' | 'PENDING'
 interface SocialAccountAttributes extends BaseAttributes {
 	id: string
 	platform: SocialPlatform
-	outstand_account_id: string | null
+	postforme_account_id: string | null
 	display_name: string | null
 	username: string | null
 	avatar_url: string | null
@@ -36,7 +36,7 @@ interface SocialAccountCreationAttributes
 	extends Optional<
 		SocialAccountAttributes,
 		| BaseModelType
-		| 'outstand_account_id'
+		| 'postforme_account_id'
 		| 'display_name'
 		| 'username'
 		| 'avatar_url'
@@ -73,7 +73,7 @@ class SocialAccount extends BaseModel<SocialAccountAttributes, SocialAccountCrea
 		type: DataType.STRING(255),
 		allowNull: true,
 	})
-	outstand_account_id?: string
+	postforme_account_id?: string
 
 	@Column({
 		type: DataType.STRING(255),

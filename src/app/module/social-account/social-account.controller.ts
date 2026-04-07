@@ -22,6 +22,9 @@ class SocialAccountController extends ResponseService {
 		}
 	}
 
+	/**
+	 * POST /callback — authenticated sync (called via curl/frontend).
+	 */
 	finalizeConnection = async (req: Request, res: Response, next: NextFunction) => {
 		try {
 			const { error, value } = finalizeConnectionSchema.validate(req.body, { abortEarly: false, stripUnknown: true })
@@ -30,6 +33,46 @@ class SocialAccountController extends ResponseService {
 			const userId = req.user.userId
 			const { statusCode, payload, message } = await socialAccountService.finalizeConnection(value, userId)
 			return this.sendResponse(res, statusCode, payload, message)
+		} catch (err) {
+			next(err)
+		}
+	}
+
+	/**
+	 * GET /callback — browser redirect from PostForMe after OAuth.
+	 * Query params: provider, projectId, isSuccess, accountIds
+	 * No JWT available (browser redirect), so we sync the account and show a success page.
+	 */
+	handleOAuthRedirect = async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			const { provider, isSuccess, accountIds } = req.query
+
+			if (isSuccess !== 'true') {
+				return res.status(400).send(
+					'<html><body style="font-family:sans-serif;text-align:center;padding:60px;">' +
+					'<h2>Connection Failed</h2>' +
+					'<p>The social account connection was not successful. Please try again.</p>' +
+					'</body></html>'
+				)
+			}
+
+			// Sync the account(s) from PostForMe using the accountIds from the redirect
+			const accountIdList = accountIds ? String(accountIds).split(',') : []
+
+			if (accountIdList.length && provider) {
+				await socialAccountService.syncFromRedirect(
+					String(provider),
+					accountIdList
+				)
+			}
+
+			return res.status(200).send(
+				'<html><body style="font-family:sans-serif;text-align:center;padding:60px;">' +
+				`<h2>Connected Successfully!</h2>` +
+				`<p>Your <strong>${provider}</strong> account has been linked.</p>` +
+				'<p>You can close this tab now.</p>' +
+				'</body></html>'
+			)
 		} catch (err) {
 			next(err)
 		}

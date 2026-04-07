@@ -21,18 +21,17 @@ export const env = Object.freeze({
 		apiKey: process.env.OPENAI_API_KEY || '',
 		model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
 	},
-	outstand: {
-		apiKey: process.env.OUTSTAND_API_KEY || '',
-		baseUrl: process.env.OUTSTAND_BASE_URL || 'https://api.outstand.so/v1',
+	postforme: {
+		apiKey: process.env.POSTFORME_API_KEY || '',
+		baseUrl: process.env.POSTFORME_BASE_URL || 'https://api.postforme.dev',
 	},
 	cloudinary: {
 		cloudName: process.env.CLOUDINARY_CLOUD_NAME || '',
 		apiKey: process.env.CLOUDINARY_API_KEY || '',
 		apiSecret: process.env.CLOUDINARY_API_SECRET || '',
 	},
-	instagram: {
-		appId: process.env.INSTAGRAM_APP_ID || '',
-		appSecret: process.env.INSTAGRAM_APP_SECRET || '',
+	postforme_webhook: {
+		secret: process.env.POSTFORME_WEBHOOK_SECRET || '',
 	},
 	freepik: {
 		apiKey: process.env.FREEPIK_API_KEY || '',

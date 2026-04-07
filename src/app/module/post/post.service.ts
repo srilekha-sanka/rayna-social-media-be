@@ -3,10 +3,12 @@ import Post from './post.model'
 import Campaign from '../campaign/campaign.model'
 import User from '../user/user.model'
 import Product from '../product/product.model'
+import SocialAccount from '../social-account/social-account.model'
 import CalendarEntry from '../content-studio/calendar-entry.model'
 import { IServiceResponse } from '../../interfaces/IServiceResponse'
 import { NotFoundError, BadRequestError } from '../../errors/api-errors'
-import { instagramService } from '../instagram/instagram.service'
+import { postForMeService } from '../postforme/postforme.service'
+import { logger } from '../../common/logger/logging'
 
 const POST_INCLUDES = [
 	{
@@ -200,8 +202,8 @@ class PostService {
 	}
 
 	/**
-	 * Publish an approved post to its target platforms.
-	 * APPROVED → PUBLISHED
+	 * Publish an approved post to all target platforms via PostForMe.
+	 * APPROVED → PUBLISHING → PUBLISHED / FAILED
 	 */
 	async publish(id: string, userId: string): Promise<IServiceResponse> {
 		const post = await Post.findByPk(id)
@@ -212,31 +214,33 @@ class PostService {
 			throw new BadRequestError(`Cannot publish — post is currently '${post.status}'. Only APPROVED posts can be published.`)
 		}
 
-		const platforms = post.platforms || []
+		await post.update({ status: 'PUBLISHING' })
 
-		// Publish to Instagram if it's a target platform
-		if (platforms.includes('instagram')) {
-			await instagramService.publishPost(id, userId)
-			// publishPost already updates status to PUBLISHED
-		} else {
-			// For other platforms, mark as PUBLISHED directly
+		try {
+			const pfmResult = await this.publishViaPostForMe(post)
+
 			await post.update({
 				status: 'PUBLISHED',
 				published_at: new Date(),
+				postforme_post_id: pfmResult.id,
 			})
+
+			if (post.calendar_entry_id) {
+				await CalendarEntry.update({ status: 'PUBLISHED' }, { where: { id: post.calendar_entry_id } })
+			}
+
+			const updated = await Post.findByPk(id, { include: POST_INCLUDES })
+
+			return { statusCode: 200, payload: updated, message: 'Post published successfully' }
+		} catch (err: any) {
+			await post.update({ status: 'FAILED' })
+			logger.error(`Failed to publish post ${id}: ${err.message}`)
+			throw new BadRequestError(`Publishing failed: ${err.message}`)
 		}
-
-		if (post.calendar_entry_id) {
-			await CalendarEntry.update({ status: 'PUBLISHED' }, { where: { id: post.calendar_entry_id } })
-		}
-
-		const updated = await Post.findByPk(id, { include: POST_INCLUDES })
-
-		return { statusCode: 200, payload: updated, message: 'Post published successfully' }
 	}
 
 	/**
-	 * Schedule an approved post for future publishing.
+	 * Schedule an approved post for future publishing via PostForMe.
 	 * APPROVED → SCHEDULED
 	 */
 	async schedule(id: string, scheduledAt: string): Promise<IServiceResponse> {
@@ -254,18 +258,120 @@ class PostService {
 			throw new BadRequestError('scheduled_at must be a future date')
 		}
 
-		await post.update({
-			status: 'SCHEDULED',
-			scheduled_at: scheduleDate,
-		})
+		try {
+			// Create the post on PostForMe with scheduled_at — PFM handles the scheduling
+			const pfmResult = await this.publishViaPostForMe(post, scheduleDate.toISOString())
 
-		if (post.calendar_entry_id) {
-			await CalendarEntry.update({ status: 'SCHEDULED' }, { where: { id: post.calendar_entry_id } })
+			await post.update({
+				status: 'SCHEDULED',
+				scheduled_at: scheduleDate,
+				postforme_post_id: pfmResult.id,
+			})
+
+			if (post.calendar_entry_id) {
+				await CalendarEntry.update({ status: 'SCHEDULED' }, { where: { id: post.calendar_entry_id } })
+			}
+
+			const updated = await Post.findByPk(id, { include: POST_INCLUDES })
+
+			return { statusCode: 200, payload: updated, message: `Post scheduled for ${scheduleDate.toISOString()}` }
+		} catch (err: any) {
+			logger.error(`Failed to schedule post ${id}: ${err.message}`)
+			throw new BadRequestError(`Scheduling failed: ${err.message}`)
+		}
+	}
+
+	// ── Private Helpers ──────────────────────────────────────────────
+
+	/**
+	 * Resolve PostForMe social_account IDs for the post.
+	 * If social_account_ids are specified, use those exact accounts.
+	 * Otherwise, fall back to all connected accounts for the target platforms.
+	 */
+	private async resolvePFMAccountIds(post: Post): Promise<string[]> {
+		const specificIds = post.social_account_ids || []
+
+		if (specificIds.length) {
+			// User picked specific accounts — look them up
+			const accounts = await SocialAccount.findAll({
+				where: {
+					id: specificIds,
+					status: 'CONNECTED',
+					is_active: true,
+				},
+			})
+
+			const pfmIds = accounts
+				.filter((a) => a.postforme_account_id)
+				.map((a) => a.postforme_account_id!)
+
+			if (!pfmIds.length) {
+				throw new BadRequestError('None of the selected social accounts are connected to PostForMe.')
+			}
+
+			return pfmIds
 		}
 
-		const updated = await Post.findByPk(id, { include: POST_INCLUDES })
+		// Fallback: all connected accounts for the target platforms
+		const platforms = post.platforms || []
+		if (!platforms.length) {
+			throw new BadRequestError('Post has no target platforms or social accounts selected.')
+		}
 
-		return { statusCode: 200, payload: updated, message: `Post scheduled for ${scheduleDate.toISOString()}` }
+		const accounts = await SocialAccount.findAll({
+			where: {
+				platform: platforms,
+				status: 'CONNECTED',
+				is_active: true,
+			},
+		})
+
+		const pfmIds = accounts
+			.filter((a) => a.postforme_account_id)
+			.map((a) => a.postforme_account_id!)
+
+		if (!pfmIds.length) {
+			throw new BadRequestError(
+				`No connected PostForMe accounts found for platform(s): ${platforms.join(', ')}. ` +
+				'Please connect your social accounts first.'
+			)
+		}
+
+		return pfmIds
+	}
+
+	/**
+	 * Build caption from post content + hashtags.
+	 */
+	private buildCaption(post: Post): string {
+		const parts: string[] = []
+
+		if (post.base_content) parts.push(post.base_content)
+
+		if (post.hashtags?.length) {
+			const tags = post.hashtags.map((h) => (h.startsWith('#') ? h : `#${h}`)).join(' ')
+			parts.push(tags)
+		}
+
+		return parts.join('\n\n')
+	}
+
+	/**
+	 * Publish (or schedule) a post via PostForMe's unified API.
+	 */
+	private async publishViaPostForMe(post: Post, scheduledAt?: string) {
+		const socialAccountIds = await this.resolvePFMAccountIds(post)
+		const caption = this.buildCaption(post)
+
+		const media = (post.media_urls || []).map((url) => ({ url }))
+
+		return postForMeService.createPost({
+			caption,
+			social_accounts: socialAccountIds,
+			scheduled_at: scheduledAt || null,
+			media: media.length ? media : undefined,
+			external_id: post.id,
+		})
 	}
 }
 

@@ -26,8 +26,6 @@ export const finalizeConnectionSchema = Joi.object({
 		.lowercase()
 		.valid(...VALID_PLATFORMS)
 		.required(),
-	code: Joi.string().required(),
-	state: Joi.string().optional(),
 })
 
 export const disconnectSchema = Joi.object({

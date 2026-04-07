@@ -10,6 +10,7 @@ export const createPostSchema = Joi.object({
 	hashtags: Joi.array().items(Joi.string()).optional().default([]),
 	cta_text: Joi.string().optional().trim(),
 	platforms: Joi.array().items(Joi.string().lowercase().valid(...VALID_PLATFORMS)).optional().default([]),
+	social_account_ids: Joi.array().items(Joi.string().uuid()).optional().default([]),
 	media_urls: Joi.array().items(Joi.string()).optional().default([]),
 	scheduled_at: Joi.string().isoDate().optional(),
 })
@@ -19,6 +20,7 @@ export const updatePostSchema = Joi.object({
 	hashtags: Joi.array().items(Joi.string()).optional(),
 	cta_text: Joi.string().optional().trim(),
 	platforms: Joi.array().items(Joi.string().lowercase().valid(...VALID_PLATFORMS)).optional(),
+	social_account_ids: Joi.array().items(Joi.string().uuid()).optional(),
 	media_urls: Joi.array().items(Joi.string()).optional(),
 	status: Joi.string().valid(...VALID_STATUSES).optional(),
 	scheduled_at: Joi.string().isoDate().optional(),
