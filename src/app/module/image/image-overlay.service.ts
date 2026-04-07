@@ -212,6 +212,14 @@ class ImageOverlayService {
 		const templateName: TemplateName = LAYOUT_TO_TEMPLATE[poster.layout || 'brush-script'] || 'poster'
 		const templateData = this.buildPosterTemplateData(poster, templateName)
 
+		// Inject logo as base64 data URI (Puppeteer blocks external image requests)
+		if (templateData.logoUrl !== undefined) {
+			const logoBuf = await this.getLogoBuffer()
+			templateData.logoUrl = logoBuf
+				? `data:image/png;base64,${logoBuf.toString('base64')}`
+				: ''
+		}
+
 		const overlayBuffer = await templateRenderer.render(
 			templateName,
 			templateData,
@@ -467,11 +475,13 @@ class ImageOverlayService {
 				} else {
 					headlineFontSize = '8vh'      // long: EVENING DESERT SAFARI
 				}
+				const logoUrl = env.brand.logoUrl || '' // Pass as marker; renderPoster() will replace with base64 data URI
 
 				return {
 					...base,
 					headline: poster.headline.toUpperCase(),
 					headlineFontSize,
+					logoUrl,
 					subheadline: subLocs,
 					bannerText: bannerParts.join('  |  '),
 					contactLeft: contacts[0]?.trim() || '',

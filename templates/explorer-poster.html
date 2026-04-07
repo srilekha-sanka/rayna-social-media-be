@@ -45,7 +45,7 @@
 		font-family: 'Dancing Script', 'Great Vibes', cursive;
 		font-size: 7vh;
 		font-weight: 700;
-		color: #E9A415;
+		color: #F5E6D3;
 		text-shadow: 2px 3px 6px rgba(0,0,0,0.7);
 		line-height: 1;
 	}
@@ -53,14 +53,14 @@
 	/* ── Headline ── */
 	.headline {
 		position: absolute;
-		top: 20%;
+		top: 26%;
 		width: 100%;
 		text-align: center;
 		padding: 0 4%;
-		font-family: 'Bebas Neue', 'Oswald', Impact, sans-serif;
+		font-family: 'Playfair Display', Georgia, serif;
 		font-size: var(--headline-font-size, 13vh);
 		font-weight: 400;
-		color: #E9A415;
+		color: #F5E6D3;
 		letter-spacing: 3px;
 		text-transform: uppercase;
 		line-height: 1;
@@ -73,35 +73,36 @@
 		top: 43%;
 		width: 100%;
 		text-align: center;
-		font-family: 'Oswald', 'Montserrat', Arial, sans-serif;
-		font-size: 1.4vh;
-		font-weight: 700;
-		color: #E9A415;
-		letter-spacing: 4px;
+		font-family: 'Montserrat', sans-serif;
+		font-size: 1.6vh;
+		font-weight: 600;
+		color: rgba(255, 255, 255, 0.85);
+		letter-spacing: 0.35em;
 		text-transform: uppercase;
-		text-shadow: 1px 2px 4px rgba(0,0,0,0.7);
+		text-shadow: 0 2px 6px rgba(0,0,0,0.5);
 	}
 
-	/* ── Red banner ── */
+	/* ──banner ── */
 	.banner {
-		position: absolute;
-		bottom: 16%;
-		left: 50%;
-		transform: translateX(-50%);
-		background: #D32F2F;
-		border-radius: 0.6vh;
-		padding: 1.3vh 4vh;
-		box-shadow: 0 4px 14px rgba(0,0,0,0.5);
-		white-space: nowrap;
-	}
-	.banner-text {
-		font-family: 'Oswald', 'Montserrat', Arial, sans-serif;
-		font-size: 2.2vh;
-		font-weight: 700;
-		color: #FFFFFF;
-		letter-spacing: 2px;
-		text-transform: uppercase;
-	}
+	position: absolute;
+	bottom: 18%;
+	left: 50%;
+	transform: translateX(-50%);
+	background: #E6BE8A;
+	border-radius: 50px;
+	padding: 1.6vh 4.5vh;
+	box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+	white-space: nowrap;
+}
+
+.banner-text {
+	font-family: 'Montserrat', sans-serif;
+	font-size: 2vh;
+	font-weight: 600;
+	color: #2A2A2A;
+	letter-spacing: 0.15em;
+	text-transform: uppercase;
+}
 
 	/* ── Contact footer ── */
 	.contact-footer {
@@ -111,6 +112,7 @@
 		right: 6%;
 		display: flex;
 		justify-content: space-between;
+		align-items: center;
 	}
 	.contact-item {
 		font-family: 'Oswald', 'Montserrat', Arial, sans-serif;
@@ -136,6 +138,9 @@
 
 			<div class="contact-footer">
 				<div class="contact-item">{{contactLeft}}</div>
+				<div>
+					<img src="{{logoUrl}}" alt="Brand Logo" style="height: 10vh;">
+				</div>
 				<div class="contact-item">{{contactRight}}</div>
 			</div>
 		</div>
