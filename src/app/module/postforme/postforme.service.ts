@@ -37,6 +37,45 @@ interface PFMPostResult {
 	details: object | null
 }
 
+interface PFMPostResultDetails extends PFMPostResult {
+	analytics?: {
+		likes?: number
+		comments?: number
+		shares?: number
+		saves?: number
+		reach?: number
+		impressions?: number
+		clicks?: number
+		video_views?: number
+		watch_time_seconds?: number
+		engagement_rate?: number
+		[key: string]: any
+	}
+}
+
+interface PFMFeedItem {
+	id: string
+	platform_post_id: string
+	url: string
+	caption: string
+	media_type: string
+	published_at: string
+	metrics?: {
+		likes?: number
+		comments?: number
+		shares?: number
+		saves?: number
+		reach?: number
+		impressions?: number
+		clicks?: number
+		video_views?: number
+		engagement_rate?: number
+		[key: string]: any
+	}
+}
+
+export { PFMPostResult, PFMPostResultDetails, PFMFeedItem, PFMPaginatedResponse, PFMSocialAccount }
+
 interface PFMMediaUpload {
 	upload_url: string
 	media_url: string
@@ -199,6 +238,28 @@ class PostForMeService {
 
 		const qs = params.toString()
 		return this.request('GET', `/v1/social-account-feeds/${socialAccountId}${qs ? `?${qs}` : ''}`)
+	}
+
+	// ── Post Result Analytics ────────────────────────────────────────
+
+	async getPostResultDetails(resultId: string): Promise<PFMPostResultDetails> {
+		return this.request<PFMPostResultDetails>('GET', `/v1/social-post-results/${resultId}?expand=analytics`)
+	}
+
+	async getAccountFeedWithMetrics(
+		socialAccountId: string,
+		options?: { limit?: number; cursor?: string }
+	): Promise<PFMPaginatedResponse<PFMFeedItem>> {
+		const params = new URLSearchParams()
+		params.set('expand', 'metrics')
+		if (options?.limit) params.set('limit', String(options.limit))
+		if (options?.cursor) params.set('cursor', options.cursor)
+
+		const qs = params.toString()
+		return this.request<PFMPaginatedResponse<PFMFeedItem>>(
+			'GET',
+			`/v1/social-account-feeds/${socialAccountId}?${qs}`
+		)
 	}
 
 	// ── Webhooks ─────────────────────────────────────────────────────

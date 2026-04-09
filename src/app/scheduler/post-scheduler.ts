@@ -3,6 +3,7 @@ import { Op } from 'sequelize'
 import Post from '../module/post/post.model'
 import CalendarEntry from '../module/content-studio/calendar-entry.model'
 import { postForMeService } from '../module/postforme/postforme.service'
+import { analyticsService } from '../module/analytics/analytics.service'
 import { logger } from '../common/logger/logging'
 
 class PostScheduler {
@@ -63,6 +64,28 @@ class PostScheduler {
 		})
 
 		logger.info('[Scheduler] Post status monitor started (runs every 2 minutes)')
+
+		// Sync analytics every 30 minutes for posts published in the last 7 days
+		cron.schedule('*/30 * * * *', async () => {
+			try {
+				const count = await analyticsService.syncRecentPosts(7)
+				logger.info(`[Scheduler] Analytics sync complete: ${count} post(s) refreshed`)
+			} catch (err: any) {
+				logger.error(`[Scheduler] Analytics sync error: ${err.message}`)
+			}
+		})
+
+		// Sync analytics every 6 hours for posts published in the last 30 days
+		cron.schedule('0 */6 * * *', async () => {
+			try {
+				const count = await analyticsService.syncRecentPosts(30)
+				logger.info(`[Scheduler] Extended analytics sync complete: ${count} post(s) refreshed`)
+			} catch (err: any) {
+				logger.error(`[Scheduler] Extended analytics sync error: ${err.message}`)
+			}
+		})
+
+		logger.info('[Scheduler] Analytics sync started (30min recent, 6hr extended)')
 	}
 }
 
