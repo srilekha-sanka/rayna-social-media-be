@@ -6,6 +6,8 @@ import Product from '../../app/module/product/product.model'
 import MediaAsset from '../../app/module/media-asset/media-asset.model'
 import Campaign from '../../app/module/campaign/campaign.model'
 import Post from '../../app/module/post/post.model'
-import InstagramCredential from '../../app/module/instagram/instagram.model'
+import ContentPlan from '../../app/module/content-studio/content-plan.model'
+import CalendarEntry from '../../app/module/content-studio/calendar-entry.model'
+import DesignTemplate from '../../app/module/content-studio/design-template.model'
 
-export { User, Role, Resource, RolePermission, Product, MediaAsset, Campaign, Post, InstagramCredential }
+export { User, Role, Resource, RolePermission, Product, MediaAsset, Campaign, Post, ContentPlan, CalendarEntry, DesignTemplate }

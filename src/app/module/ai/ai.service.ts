@@ -1,9 +1,17 @@
 import OpenAI from 'openai'
+import fetch from 'node-fetch'
+import { fal } from '@fal-ai/client'
 import { env } from '../../../db/config/env.config'
 import { IServiceResponse } from '../../interfaces/IServiceResponse'
 import { BadRequestError } from '../../errors/api-errors'
+import { logger } from '../../common/logger/logging'
 
 const openai = new OpenAI({ apiKey: env.openai.apiKey })
+
+// Configure fal.ai client
+if (env.fal.apiKey) {
+	fal.config({ credentials: env.fal.apiKey })
+}
 
 interface CaptionInput {
 	product_name: string
@@ -201,6 +209,74 @@ Design a ${input.slide_count}-slide carousel that makes someone book this experi
 		const result = await this.callOpenAI<CarouselResponse>(systemPrompt, userPrompt)
 
 		return { statusCode: 200, payload: result, message: 'Carousel content generated successfully' }
+	}
+
+	async callOpenAIRaw<T = any>(systemPrompt: string, userPrompt: string): Promise<T> {
+		return this.callOpenAI<T>(systemPrompt, userPrompt)
+	}
+
+	/**
+	 * Edit an image using Fal.ai Flux Kontext — overlays text on the original photo
+	 * without regenerating or distorting the background image.
+	 */
+	async editImage(input: {
+		imageBuffer: Buffer
+		prompt: string
+		model?: 'flux-kontext' | 'ideogram'
+		size?: '1024x1024' | '1024x1536' | '1536x1024'
+		quality?: 'low' | 'medium' | 'high'
+	}): Promise<Buffer[]> {
+		if (!env.fal.apiKey) throw new BadRequestError('FAL_API_KEY is not configured')
+
+		const model = input.model || 'flux-kontext'
+		logger.info(`Fal.ai image edit [${model}]: "${input.prompt.slice(0, 80)}..."`)
+
+		const base64Image = `data:image/png;base64,${input.imageBuffer.toString('base64')}`
+
+		let result: any
+
+		if (model === 'ideogram') {
+			result = await fal.subscribe('fal-ai/ideogram/v3/edit' as any, {
+				input: {
+					image_url: base64Image,
+					prompt: input.prompt,
+					magic_prompt_option: 'ON',
+					num_images: 1,
+				},
+				logs: true,
+				onQueueUpdate: (update: any) => {
+					if (update.status === 'IN_PROGRESS' && update.logs?.length) {
+						logger.info(`Fal.ai ideogram progress: ${update.logs[update.logs.length - 1].message}`)
+					}
+				},
+			}) as any
+		} else {
+			result = await fal.subscribe('fal-ai/flux-kontext/dev' as any, {
+				input: {
+					image_url: base64Image,
+					prompt: input.prompt,
+					num_images: 1,
+					output_format: 'png',
+				},
+				logs: true,
+				onQueueUpdate: (update: any) => {
+					if (update.status === 'IN_PROGRESS' && update.logs?.length) {
+						logger.info(`Fal.ai kontext progress: ${update.logs[update.logs.length - 1].message}`)
+					}
+				},
+			}) as any
+		}
+
+		const images = result.data?.images || result.images
+		if (!images?.length) throw new BadRequestError('Fal.ai returned no images')
+
+		const buffers: Buffer[] = []
+		for (const img of images) {
+			const imgRes = await fetch(img.url)
+			buffers.push(await imgRes.buffer())
+		}
+
+		return buffers
 	}
 
 	private async callOpenAI<T = any>(systemPrompt: string, userPrompt: string): Promise<T> {

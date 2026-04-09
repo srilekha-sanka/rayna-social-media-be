@@ -1,136 +1,178 @@
-import { WhereOptions } from 'sequelize'
+import { WhereOptions, Op } from 'sequelize'
 import SocialAccount from './social-account.model'
-import Brand from '../brand/brand.model'
 import User from '../user/user.model'
-import { outstandService } from '../outstand/outstand.service'
+import { postForMeService } from '../postforme/postforme.service'
 import { IServiceResponse } from '../../interfaces/IServiceResponse'
 import { NotFoundError, BadRequestError } from '../../errors/api-errors'
 import { logger } from '../../common/logger/logging'
 
 const ACCOUNT_INCLUDES = [
-	{ model: Brand, attributes: ['id', 'name', 'logo_url'] },
 	{ model: User, as: 'connector', attributes: ['id', 'email', 'first_name'] },
 ]
 
 class SocialAccountService {
 	/**
-	 * Get OAuth URL from Outstand.so for a given platform.
+	 * Step 1 of OAuth: Get auth URL from PostForMe.
+	 * Creates a PENDING record so we know which user initiated the flow
+	 * when PostForMe redirects back (GET callback has no JWT).
 	 */
-	async getAuthUrl(data: { platform: string; brand_id: string; redirect_url?: string }, userId: string): Promise<IServiceResponse> {
-		const brand = await Brand.findByPk(data.brand_id)
-		if (!brand) {
-			throw new NotFoundError('Brand not found')
-		}
-
-		// Create a pending social account record
-		const account = await SocialAccount.create({
-			brand_id: data.brand_id,
-			platform: data.platform as any,
-			status: 'PENDING',
-			connected_by: userId,
-		} as any)
-
+	async getAuthUrl(data: { platform: string; connection_type?: string }, userId: string): Promise<IServiceResponse> {
 		try {
-			const { auth_url } = await outstandService.getAuthUrl(data.platform, data.redirect_url)
+			const { url } = await postForMeService.getAuthUrl(data.platform, data.connection_type)
+
+			// Track who started this OAuth flow
+			await SocialAccount.create({
+				platform: data.platform as any,
+				status: 'PENDING',
+				connected_by: userId,
+			} as any)
 
 			return {
 				statusCode: 200,
-				payload: {
-					auth_url,
-					account_id: account.id,
-					platform: data.platform,
-				},
+				payload: { auth_url: url, platform: data.platform },
 				message: 'OAuth URL generated successfully',
 			}
 		} catch (err: any) {
-			// Clean up pending record on failure
-			await account.destroy()
 			logger.error(`Failed to get auth URL: ${err.message}`)
 			throw new BadRequestError(`Failed to initiate ${data.platform} connection: ${err.message}`)
 		}
 	}
 
 	/**
-	 * Finalize OAuth callback — exchange code for account connection via Outstand.so.
+	 * Step 2a: Sync from PostForMe browser redirect (GET /callback).
+	 * No JWT available — we resolve the user from the most recent PENDING record.
+	 * Returns synced accounts for the callback HTML response.
 	 */
-	async finalizeConnection(
-		data: { platform: string; brand_id: string; code: string; state?: string },
-		userId: string
-	): Promise<IServiceResponse> {
-		const brand = await Brand.findByPk(data.brand_id)
-		if (!brand) {
-			throw new NotFoundError('Brand not found')
+	async syncFromRedirect(
+		platform: string,
+		pfmAccountIds: string[]
+	): Promise<{ accounts: SocialAccount[]; count: number }> {
+		// Find who initiated this OAuth (most recent PENDING record for this platform)
+		const pendingRecord = await SocialAccount.findOne({
+			where: { platform, status: 'PENDING', is_active: true },
+			order: [['createdAt', 'DESC']],
+		})
+
+		const connectedBy = pendingRecord?.connected_by
+
+		// Clean up ALL stale PENDING records for this platform (older than 30 min get cleaned too)
+		await SocialAccount.destroy({
+			where: {
+				platform,
+				status: 'PENDING',
+				is_active: true,
+			},
+		})
+
+		if (!connectedBy) {
+			logger.warn(`[OAuth] No pending record found for ${platform} — cannot attribute connection to user`)
+			throw new BadRequestError('OAuth session expired. Please try connecting again from the dashboard.')
 		}
 
+		const synced: SocialAccount[] = []
+
+		for (const pfmAccountId of pfmAccountIds) {
+			try {
+				// Check if we already track this PostForMe account
+				const existing = await SocialAccount.findOne({
+					where: { postforme_account_id: pfmAccountId, is_active: true },
+				})
+
+				if (existing) {
+					const pfmAccount = await postForMeService.getAccount(pfmAccountId)
+					await existing.update({
+						username: pfmAccount.username || existing.username,
+						status: 'CONNECTED',
+						connected_at: new Date(),
+					})
+					synced.push(existing)
+				} else {
+					const pfmAccount = await postForMeService.getAccount(pfmAccountId)
+					const account = await SocialAccount.create({
+						platform: platform as any,
+						postforme_account_id: pfmAccount.id,
+						username: pfmAccount.username,
+						platform_user_id: pfmAccount.external_id,
+						status: 'CONNECTED',
+						connected_at: new Date(),
+						connected_by: connectedBy,
+					} as any)
+					synced.push(account)
+				}
+			} catch (err: any) {
+				logger.error(`[OAuth] Failed to sync account ${pfmAccountId}: ${err.message}`)
+			}
+		}
+
+		return { accounts: synced, count: synced.length }
+	}
+
+	/**
+	 * Step 2b: Authenticated sync (POST /callback) — called from frontend/curl with JWT.
+	 * Pulls all connected accounts for a platform from PostForMe.
+	 */
+	async finalizeConnection(
+		data: { platform: string },
+		userId: string
+	): Promise<IServiceResponse> {
 		try {
-			const outstandAccount = await outstandService.finalizeConnection(data.code, data.platform)
-
-			// Check if account already exists for this platform + brand
-			const existing = await SocialAccount.findOne({
-				where: {
-					brand_id: data.brand_id,
-					platform: data.platform,
-					outstand_account_id: outstandAccount.id,
-					is_active: true,
-				},
+			const { data: pfmAccounts } = await postForMeService.listAccounts({
+				platform: data.platform,
+				status: 'connected',
 			})
 
-			if (existing) {
-				// Update existing account
-				await existing.update({
-					display_name: outstandAccount.display_name,
-					username: outstandAccount.username,
-					avatar_url: outstandAccount.avatar_url,
-					platform_user_id: outstandAccount.platform_user_id,
-					status: 'CONNECTED',
-					connected_at: new Date(),
-				})
-
-				const updated = await SocialAccount.findByPk(existing.id, { include: ACCOUNT_INCLUDES })
-				return { statusCode: 200, payload: updated, message: 'Social account reconnected successfully' }
+			if (!pfmAccounts.length) {
+				throw new BadRequestError(`No connected ${data.platform} accounts found on PostForMe. Please try connecting again.`)
 			}
 
-			// Find the pending record or create a new one
-			let account = await SocialAccount.findOne({
-				where: {
-					brand_id: data.brand_id,
-					platform: data.platform,
-					status: 'PENDING',
-					connected_by: userId,
-					is_active: true,
-				},
-				order: [['createdAt', 'DESC']],
+			const synced: SocialAccount[] = []
+
+			for (const pfmAccount of pfmAccounts) {
+				const existing = await SocialAccount.findOne({
+					where: { postforme_account_id: pfmAccount.id, is_active: true },
+				})
+
+				if (existing) {
+					await existing.update({
+						username: pfmAccount.username || existing.username,
+						status: 'CONNECTED',
+						connected_at: new Date(),
+					})
+					synced.push(existing)
+				} else {
+					const account = await SocialAccount.create({
+						platform: data.platform as any,
+						postforme_account_id: pfmAccount.id,
+						username: pfmAccount.username,
+						platform_user_id: pfmAccount.external_id,
+						status: 'CONNECTED',
+						connected_at: new Date(),
+						connected_by: userId,
+					} as any)
+					synced.push(account)
+				}
+			}
+
+			// Clean up any leftover PENDING records
+			await SocialAccount.destroy({
+				where: { platform: data.platform, status: 'PENDING', connected_by: userId },
 			})
 
-			if (account) {
-				await account.update({
-					outstand_account_id: outstandAccount.id,
-					display_name: outstandAccount.display_name,
-					username: outstandAccount.username,
-					avatar_url: outstandAccount.avatar_url,
-					platform_user_id: outstandAccount.platform_user_id,
-					status: 'CONNECTED',
-					connected_at: new Date(),
-				})
-			} else {
-				account = await SocialAccount.create({
-					brand_id: data.brand_id,
-					platform: data.platform as any,
-					outstand_account_id: outstandAccount.id,
-					display_name: outstandAccount.display_name,
-					username: outstandAccount.username,
-					avatar_url: outstandAccount.avatar_url,
-					platform_user_id: outstandAccount.platform_user_id,
-					status: 'CONNECTED',
-					connected_at: new Date(),
-					connected_by: userId,
-				} as any)
-			}
+			const payload = synced.length === 1
+				? await SocialAccount.findByPk(synced[0].id, { include: ACCOUNT_INCLUDES })
+				: await SocialAccount.findAll({
+						where: { id: synced.map((a) => a.id) },
+						include: ACCOUNT_INCLUDES,
+					})
 
-			const full = await SocialAccount.findByPk(account.id, { include: ACCOUNT_INCLUDES })
-			return { statusCode: 201, payload: full, message: 'Social account connected successfully' }
+			return {
+				statusCode: 201,
+				payload,
+				message: `${synced.length} ${data.platform} account(s) synced successfully`,
+			}
 		} catch (err: any) {
-			logger.error(`Failed to finalize connection: ${err.message}`)
+			if (err instanceof BadRequestError) throw err
+			logger.error(`Failed to sync connection: ${err.message}`)
 			throw new BadRequestError(`Failed to connect ${data.platform}: ${err.message}`)
 		}
 	}
@@ -141,16 +183,14 @@ class SocialAccountService {
 	async findAll(query: {
 		page: number
 		limit: number
-		brand_id?: string
 		platform?: string
 		status?: string
 	}): Promise<IServiceResponse> {
-		const { page, limit, brand_id, platform, status } = query
+		const { page, limit, platform, status } = query
 		const offset = (page - 1) * limit
 
-		const where: WhereOptions = { is_active: true }
+		const where: WhereOptions = { is_active: true, status: { [Op.ne]: 'PENDING' } }
 
-		if (brand_id) where.brand_id = brand_id
 		if (platform) where.platform = platform
 		if (status) where.status = status
 
@@ -186,7 +226,7 @@ class SocialAccountService {
 	}
 
 	/**
-	 * Disconnect a social account — removes from Outstand.so and marks as DISCONNECTED locally.
+	 * Disconnect a social account — removes from PostForMe and marks as DISCONNECTED locally.
 	 */
 	async disconnect(id: string): Promise<IServiceResponse> {
 		const account = await SocialAccount.findByPk(id)
@@ -195,13 +235,11 @@ class SocialAccountService {
 			throw new NotFoundError('Social account not found')
 		}
 
-		// Remove from Outstand.so if connected
-		if (account.outstand_account_id) {
+		if (account.postforme_account_id) {
 			try {
-				await outstandService.removeAccount(account.outstand_account_id)
+				await postForMeService.disconnectAccount(account.postforme_account_id)
 			} catch (err: any) {
-				logger.error(`Failed to remove from Outstand: ${err.message}`)
-				// Continue with local disconnection even if Outstand fails
+				logger.error(`Failed to disconnect from PostForMe: ${err.message}`)
 			}
 		}
 
@@ -211,7 +249,7 @@ class SocialAccountService {
 	}
 
 	/**
-	 * Refresh account health — check status with Outstand.so.
+	 * Refresh account health — check status with PostForMe.
 	 */
 	async refreshStatus(id: string): Promise<IServiceResponse> {
 		const account = await SocialAccount.findByPk(id)
@@ -220,18 +258,16 @@ class SocialAccountService {
 			throw new NotFoundError('Social account not found')
 		}
 
-		if (!account.outstand_account_id) {
-			throw new BadRequestError('Account has no Outstand connection to refresh')
+		if (!account.postforme_account_id) {
+			throw new BadRequestError('Account has no PostForMe connection to refresh')
 		}
 
 		try {
-			const outstandAccount = await outstandService.getAccount(account.outstand_account_id)
+			const pfmAccount = await postForMeService.getAccount(account.postforme_account_id)
 
 			await account.update({
-				display_name: outstandAccount.display_name,
-				username: outstandAccount.username,
-				avatar_url: outstandAccount.avatar_url,
-				status: outstandAccount.status === 'active' ? 'CONNECTED' : 'EXPIRED',
+				username: pfmAccount.username || account.username,
+				status: pfmAccount.status === 'connected' ? 'CONNECTED' : 'EXPIRED',
 			})
 
 			const updated = await SocialAccount.findByPk(id, { include: ACCOUNT_INCLUDES })
