@@ -4,11 +4,13 @@ const VALID_PLATFORMS = ['instagram', 'facebook', 'x', 'linkedin', 'tiktok', 'yo
 const VALID_STATUSES = ['DRAFT', 'PENDING_REVIEW', 'APPROVED', 'SCHEDULED', 'PUBLISHING', 'PUBLISHED', 'FAILED'] as const
 
 export const createPostSchema = Joi.object({
+	calendar_entry_id: Joi.string().uuid().optional(),
 	campaign_id: Joi.string().uuid().optional(),
 	base_content: Joi.string().optional().trim(),
 	hashtags: Joi.array().items(Joi.string()).optional().default([]),
 	cta_text: Joi.string().optional().trim(),
 	platforms: Joi.array().items(Joi.string().lowercase().valid(...VALID_PLATFORMS)).optional().default([]),
+	social_account_ids: Joi.array().items(Joi.string().uuid()).optional().default([]),
 	media_urls: Joi.array().items(Joi.string()).optional().default([]),
 	scheduled_at: Joi.string().isoDate().optional(),
 })
@@ -18,13 +20,21 @@ export const updatePostSchema = Joi.object({
 	hashtags: Joi.array().items(Joi.string()).optional(),
 	cta_text: Joi.string().optional().trim(),
 	platforms: Joi.array().items(Joi.string().lowercase().valid(...VALID_PLATFORMS)).optional(),
+	social_account_ids: Joi.array().items(Joi.string().uuid()).optional(),
 	media_urls: Joi.array().items(Joi.string()).optional(),
 	status: Joi.string().valid(...VALID_STATUSES).optional(),
 	scheduled_at: Joi.string().isoDate().optional(),
 })
 
+export const publishPostSchema = Joi.object({
+	social_account_ids: Joi.array().items(Joi.string().uuid()).min(1).required()
+		.messages({ 'array.min': 'You must select at least one social account to publish to.' }),
+})
+
 export const schedulePostSchema = Joi.object({
 	scheduled_at: Joi.string().isoDate().required(),
+	social_account_ids: Joi.array().items(Joi.string().uuid()).min(1).required()
+		.messages({ 'array.min': 'You must select at least one social account to schedule to.' }),
 })
 
 export const rejectPostSchema = Joi.object({

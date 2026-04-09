@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+	* { margin: 0; padding: 0; box-sizing: border-box; }
+	body {
+		width: var(--viewport-width);
+		height: var(--viewport-height);
+		overflow: hidden;
+		background: transparent;
+	}
+	.container { width: 100%; height: 100%; position: relative; }
+
+	.top-vignette { position: absolute; top: 0; left: 0; right: 0; height: 25%; background: linear-gradient(to bottom, rgba(0,0,0,0.4), rgba(0,0,0,0)); }
+	.bottom-gradient { position: absolute; bottom: 0; left: 0; right: 0; height: 22%; background: linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0.3) 50%, rgba(0,0,0,0.55) 100%); }
+	.left-gradient { position: absolute; top: 45%; left: 0; width: 55%; height: 35%; background: linear-gradient(to right, rgba(0,0,0,0.35), rgba(0,0,0,0)); }
+
+	.content { position: relative; z-index: 1; width: 100%; height: 100%; display: flex; flex-direction: column; }
+
+	.headline {
+		margin-top: 9%;
+		text-align: center;
+     	font-family: 'Playfair Display', serif;
+		font-size: 8.5vh;
+		font-weight: 400;
+		color: #FFFFFF;
+		letter-spacing: 3vh;
+		text-shadow: 0 1px 4px rgba(0,0,0,0.45);
+	}
+	.tagline {
+		text-align: center;
+		margin-top: 0.5%;
+		font-family: 'Playfair Display', serif;
+		font-size: 2.3vh;
+		font-style: normal;
+		color: rgba(255,255,255,0.9);
+		letter-spacing: 1px;
+		text-shadow: 0 1px 4px rgba(0,0,0,0.45);
+	}
+
+.description {
+	position: absolute;
+	top: 52%;
+	left: 8%;
+
+	font-family: 'Cormorant Garamond', serif;
+	font-size: 2.4vh;
+	font-style: normal;
+	font-weight: 400;
+
+	color: #EDE3D2; /* warm tone instead of pure white */
+
+	line-height: 1.6;
+	letter-spacing: 0.3px;
+
+	max-width: 42%;
+
+	text-shadow: 0 1px 3px rgba(0,0,0,0.4);
+}
+
+	.cta-btn {	
+		font-family: 'Montserrat', sans-serif;
+	font-weight: 500; /* key */
+	font-size: 1.6vh;
+	top:68%;
+	left: 8%;
+	position: absolute;
+
+	text-transform: uppercase;
+	letter-spacing: 2px; /* wide spacing like image */
+
+	color: #4a3f36; /* warm dark brown, not black */
+
+	background: linear-gradient(
+		180deg,
+		#f1e2cf 0%,
+		#d9c2a3 100%
+	);
+
+	padding: 1.2vh 3vh;
+	border-radius: 50px;
+
+	border: none;
+	}
+</style>
+</head>
+<body>
+	<div class="container">
+		<div class="top-vignette"></div>
+		<div class="bottom-gradient"></div>
+		<div class="left-gradient"></div>
+		<div class="content">
+			<div class="headline">{{headline}}</div>
+			<div class="tagline">{{tagline}}</div>
+			<div class="description">{{description}}</div>
+			<div class="cta-btn">BOOK NOW</div>
+		</div>
+	</div>
+</body>
+</html>

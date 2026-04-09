@@ -10,6 +10,9 @@ import User from '../user/user.model'
 import { aiService } from '../ai/ai.service'
 import { imageOverlayService, AspectRatio } from '../image/image-overlay.service'
 import { cloudinaryService } from '../cloudinary/cloudinary.service'
+import { freepikService } from '../freepik/freepik.service'
+import CalendarEntry from '../content-studio/calendar-entry.model'
+import DesignTemplate, { PromptConfig } from '../content-studio/design-template.model'
 import { IServiceResponse } from '../../interfaces/IServiceResponse'
 import { NotFoundError, BadRequestError } from '../../errors/api-errors'
 import { UPLOAD_DIR } from '../../config/upload.config'
@@ -24,6 +27,7 @@ type JobStatus = 'PROCESSING' | 'COMPLETED' | 'FAILED'
 interface GenerateCarouselInput {
 	product_id: string
 	campaign_id?: string
+	calendar_entry_id?: string
 	platform: string
 	slide_count?: number
 	intent?: Intent
@@ -33,6 +37,7 @@ interface GenerateCarouselInput {
 interface GenerateReelInput {
 	product_id: string
 	campaign_id?: string
+	calendar_entry_id?: string
 	platform: string
 	slide_duration?: number
 	transition_duration?: number
@@ -51,6 +56,87 @@ if (!fs.existsSync(TMP_DIR)) fs.mkdirSync(TMP_DIR, { recursive: true })
 
 /** In-memory job store. Replace with Redis for multi-instance deployments. */
 const jobStore = new Map<string, Job>()
+
+/**
+ * Resolve the correct aspect ratio based on platform + post type.
+ * Instagram images/carousels → 4:5 portrait, stories/reels → 9:16 (use 4:5 since we don't support 9:16 yet),
+ * Facebook → 4:5, Twitter/LinkedIn → 1.91:1 landscape.
+ * Default: 4:5 portrait for everything.
+ */
+function resolveAspectRatio(platform?: string, postType?: string): AspectRatio {
+	const p = (platform || '').toLowerCase()
+	const t = (postType || '').toLowerCase()
+
+	// Stories and reels are vertical — use 4:5 (closest supported portrait)
+	if (t === 'story' || t === 'reel') return '4:5'
+
+	// Twitter/X and LinkedIn prefer landscape for link cards
+	if (p === 'twitter' || p === 'x' || p === 'linkedin') {
+		if (t === 'carousel' || t === 'image') return '4:5' // carousels/images are still portrait
+		return '1.91:1'
+	}
+
+	// Instagram & Facebook — always portrait for images and carousels
+	return '4:5'
+}
+
+const LIFESTYLE_HUMAN_PROMPT = `Add a small woman seen from behind in the bottom-right corner of this image. She is sitting or standing, wearing a light dress and straw sun hat, looking at the view. Show only her upper body or half body. She should be small relative to the image — do NOT make her dominate the frame. CRITICAL: Do NOT change, add, remove, or modify ANYTHING else in the image — no new grass, no new ground, no new objects, no color changes, no background changes. The rest of the image must remain pixel-perfect identical. Only add the woman.`
+
+function buildPosterData(
+	entry: CalendarEntry,
+	product?: Product,
+): Record<string, string> {
+	const meta = (product?.meta || {}) as Record<string, any>
+
+	const entryDate = entry.date ? new Date(entry.date) : null
+	const formattedDate = entryDate
+		? `${entryDate.getDate()} ${entryDate.toLocaleString('en-US', { month: 'short' }).toUpperCase()}`
+		: ''
+
+	const durationShort = meta.duration_short || meta.nights
+		? `${(meta.days || '')}D-${(meta.nights || '')}N`
+		: ''
+
+	let includes = ''
+	if (product) {
+		if (meta.includes) {
+			includes = String(meta.includes)
+		} else {
+			includes = 'Stay | Breakfast | Tours | Transfers'
+		}
+	}
+
+	return {
+		destination: entry.title || '',
+		headline: entry.title || '',
+		subheadline: entry.description || '',
+		tagline: meta.tagline || 'by your side',
+		price: product ? `${product.currency} ${product.price}/-` : '',
+		duration: durationShort,
+		includes,
+		dates: formattedDate + (durationShort ? ` | ${durationShort}` : ''),
+		contact: meta.contact || '+971 4 208 7444 | +91 20 6683 8877',
+		brand_name: 'Rayna Tours',
+	}
+}
+
+function buildDesignPrompt(
+	promptConfig: PromptConfig,
+	entry: CalendarEntry,
+	product?: Product,
+	additionalPrompt?: string,
+): string {
+	const replacements = buildPosterData(entry, product)
+
+	let prompt = promptConfig.design_prompt
+	for (const [key, value] of Object.entries(replacements)) {
+		prompt = prompt.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value)
+	}
+
+	if (additionalPrompt) prompt += `\n\nAdditional instructions: ${additionalPrompt}`
+
+	return prompt
+}
 
 class ContentService {
 	async generateCarousel(input: GenerateCarouselInput, authorId: string): Promise<IServiceResponse> {
@@ -115,6 +201,51 @@ class ContentService {
 		}
 	}
 
+	// ── Public: Process product images with overlays (used by content-studio compose) ──
+
+	async processProductMedia(input: {
+		product: Product
+		platform: string
+		slide_count?: number
+		intent?: Intent
+		aspect_ratio?: AspectRatio
+	}): Promise<{ media_urls: string[]; ai_content: { caption: string; hashtags: string[]; cta: string } }> {
+		const { product, platform } = input
+		if (!product.image_urls?.length) throw new BadRequestError('Product has no images')
+
+		const slideCount = Math.min(input.slide_count || product.image_urls.length, product.image_urls.length, 10)
+		const intent = input.intent || this.classifyIntent(product)
+		const priceLabel = `${product.currency} ${product.price}`
+
+		const [aiContent, downloadedImages] = await Promise.all([
+			aiService.generateCarouselContent({
+				product_name: product.name,
+				product_description: product.short_description || product.description,
+				price: priceLabel,
+				offer: product.offer_label || undefined,
+				intent, platform,
+				slide_count: slideCount,
+			}),
+			this.downloadAllImages(product.image_urls.slice(0, slideCount)),
+		])
+
+		const carouselData = aiContent.payload as {
+			slides: Array<{ overlay_text: string; cta_text: string; subtitle?: string }>
+			caption: string
+			hashtags: string[]
+			cta: string
+		}
+
+		const processedSlides = await this.processSlides(downloadedImages, carouselData.slides, {
+			price: priceLabel, offerLabel: product.offer_label || undefined,
+		}, input.aspect_ratio || 'auto')
+
+		return {
+			media_urls: processedSlides.map((s) => s.url),
+			ai_content: { caption: carouselData.caption, hashtags: carouselData.hashtags, cta: carouselData.cta },
+		}
+	}
+
 	// ── Private: Carousel Processing ─────────────────────────────────
 
 	private async processCarousel(jobId: string, input: GenerateCarouselInput, product: Product, authorId: string) {
@@ -147,6 +278,7 @@ class ContentService {
 		}, input.aspect_ratio || 'auto')
 
 		const post = await Post.create({
+			calendar_entry_id: input.calendar_entry_id || null,
 			campaign_id: campaign_id || null,
 			author_id: authorId,
 			base_content: carouselData.caption,
@@ -206,6 +338,7 @@ class ContentService {
 		const videoUrl = slideshow.secure_url || slideshow.url || null
 
 		const post = await Post.create({
+			calendar_entry_id: input.calendar_entry_id || null,
 			campaign_id: input.campaign_id || null,
 			author_id: authorId,
 			base_content: `${product.name} — Reel`,
@@ -284,10 +417,370 @@ class ContentService {
 		)
 	}
 
+	// ── Public: Process stock media images with optional overlay + AI caption ──
+
+	async processStockMedia(input: {
+		image_urls: string[]
+		entry: CalendarEntry
+		apply_overlay: boolean
+		generate_ai_caption: boolean
+		aspect_ratio?: AspectRatio
+	}): Promise<{ media_urls: string[]; ai_content?: { caption: string; hashtags: string[]; cta: string } }> {
+		const { image_urls, entry, apply_overlay, generate_ai_caption } = input
+
+		if (!image_urls.length) throw new BadRequestError('No stock image URLs provided')
+
+		const downloadedImages = await this.downloadAllImages(image_urls)
+
+		let mediaUrls: string[]
+
+		if (apply_overlay) {
+			// Generate minimal overlay texts from entry context
+			const overlayTexts = downloadedImages.map((_, index) => ({
+				overlay_text: index === 0 ? entry.title : '',
+				cta_text: index === 0 || index === downloadedImages.length - 1 ? 'Book Now' : '',
+				subtitle: index === 0 ? (entry.description?.slice(0, 60) || '') : undefined,
+			}))
+
+			const processedSlides = await this.processSlides(downloadedImages, overlayTexts, {
+				price: '', offerLabel: undefined,
+			}, input.aspect_ratio || 'auto')
+
+			mediaUrls = processedSlides.map((s) => s.url)
+		} else {
+			// No overlay — just upload to Cloudinary directly
+			mediaUrls = await Promise.all(
+				downloadedImages.map(async (localPath, index) => {
+					const buffer = fs.readFileSync(localPath)
+					let url: string
+					if (cloudinaryService.enabled) {
+						const uploaded = await cloudinaryService.uploadBuffer(buffer, { folder: 'rayna/stock' })
+						url = uploaded.secure_url
+					} else {
+						const fileName = `stock-${Date.now()}-${index}.jpeg`
+						const destPath = path.join(PROCESSED_DIR, fileName)
+						fs.writeFileSync(destPath, buffer)
+						url = `/uploads/processed/${fileName}`
+					}
+					this.cleanup(localPath)
+					return url
+				})
+			)
+		}
+
+		let aiContent: { caption: string; hashtags: string[]; cta: string } | undefined
+
+		if (generate_ai_caption) {
+			const result = await aiService.callOpenAIRaw<{ caption: string; hashtags: string[]; cta_text: string }>(`You are a social media copywriter for Rayna Tours, Dubai's top tours & activities company.
+
+RESPOND WITH VALID JSON ONLY:
+{"caption":"the full post caption","hashtags":["hashtag1","hashtag2"],"cta_text":"call to action"}
+
+RULES:
+- Platform: ${entry.platform}
+- Content type: ${entry.content_type}
+- Write an engaging, scroll-stopping caption
+- 10-15 relevant hashtags
+- Platform-appropriate CTA`, `Create post content for:
+Title: ${entry.title}
+Brief: ${entry.description || 'No specific brief'}
+Platform: ${entry.platform} | Type: ${entry.content_type}
+Note: Using stock/custom images, not product-specific content.`)
+
+			aiContent = { caption: result.caption, hashtags: result.hashtags, cta: result.cta_text }
+		}
+
+		return { media_urls: mediaUrls, ai_content: aiContent }
+	}
+
+	// ── Public: Generate AI images via Freepik and process with overlay ──
+
+	async processAIGeneratedMedia(input: {
+		entry: CalendarEntry
+		product?: Product
+		style: 'photo' | 'digital-art' | '3d' | 'painting'
+		additional_prompt?: string
+		num_images?: number
+		apply_overlay: boolean
+		aspect_ratio?: AspectRatio
+		template?: DesignTemplate
+	}): Promise<{ media_urls: string[]; ai_content: { caption: string; hashtags: string[]; cta: string } }> {
+		const { entry, product, style, additional_prompt, apply_overlay, template } = input
+
+		// Build the image generation prompt — use design template if provided, otherwise fall back to generic
+		let imagePrompt: string
+
+		if (template) {
+			imagePrompt = buildDesignPrompt(template.prompt_config, entry, product, additional_prompt)
+		} else {
+			imagePrompt = `Professional social media image for: ${entry.title}.`
+			if (entry.description) imagePrompt += ` ${entry.description}.`
+			if (product) imagePrompt += ` Product: ${product.name} — ${product.short_description || product.description || ''}.`
+			imagePrompt += ` Dubai tourism and travel context. High quality, vibrant, eye-catching.`
+			if (additional_prompt) imagePrompt += ` ${additional_prompt}`
+		}
+
+		let imageBuffers: Buffer[]
+
+		// ── Template + product image → programmatic poster renderer ──
+		if (template && product?.image_urls?.length) {
+			const referenceImagePath = await this.downloadImage(product.image_urls[0], 'ref')
+			const referenceBuffer = fs.readFileSync(referenceImagePath)
+			this.cleanup(referenceImagePath)
+
+			const data = buildPosterData(entry, product)
+			const layoutMap: Record<string, 'brush-script' | 'heritage' | 'bold-adventure' | 'explorer' | 'lifestyle'> = {
+				'brush-script-escape': 'brush-script',
+				'heritage-cinematic': 'heritage',
+				'bold-adventure': 'bold-adventure',
+				'explorer-minimal': 'explorer',
+				'lifestyle-editorial': 'lifestyle',
+			}
+			const layout = layoutMap[template.slug] || 'brush-script' as const
+			const aspectRatio = (input.aspect_ratio as AspectRatio) || resolveAspectRatio(entry.platform, entry.post_type)
+
+			// For lifestyle-editorial: generate editorial copy via AI
+			let lfSubheadline = data.subheadline
+			let lfTagline = data.tagline
+			if (template.slug === 'lifestyle-editorial') {
+				try {
+					const copy = await aiService.callOpenAIRaw<{ tagline: string; description: string }>(`You are a world-class travel copywriter at a FAANG-level social media agency. Write luxury editorial copy for a travel poster.
+
+RESPOND WITH VALID JSON ONLY:
+{"tagline":"short emotional subtitle — max 6 words, elegant, evocative","description":"2-3 short poetic lines about the destination experience — max 60 characters total, aspirational, editorial magazine tone"}
+
+RULES:
+- Tagline: dreamy, evocative, max 6 words (e.g. "Serenity, Shores & Island Magic" or "Where Dreams Meet the Horizon")
+- Description: 2-3 short poetic lines, conversational luxury tone, max 60 chars (e.g. "From hidden gems\\nto iconic views,\\ndiscover unforgettable\\nmoments.")
+- No hashtags, no emojis, no exclamation marks
+- Think: Condé Nast Traveler, AFAR Magazine, Kinfolk editorial style`, `Destination: ${entry.title}\nBrief: ${entry.description || 'Premium travel experience'}\n${product ? `Product: ${product.name}` : ''}`)
+
+					lfTagline = copy.tagline || lfTagline
+					lfSubheadline = copy.description || lfSubheadline
+				} catch (err: any) {
+					logger.warn(`Lifestyle editorial copy generation failed: ${err.message}`)
+				}
+			}
+
+			let posterBuffer = await imageOverlayService.renderPoster(referenceBuffer, {
+				brand_name: data.brand_name,
+				headline: data.headline,
+				subheadline: lfSubheadline,
+				tagline: lfTagline,
+				price: data.price,
+				includes: data.includes,
+				dates: data.dates,
+				duration: data.duration,
+				contact: data.contact,
+				layout,
+			}, aspectRatio)
+
+			// Lifestyle Editorial: enhance with AI to add a photorealistic human traveler
+			if (template.slug === 'lifestyle-editorial') {
+				console.log('>>> Lifestyle editorial: calling Flux Kontext Pro to add human traveler...')
+				const enhanced = await aiService.editImage({
+					imageBuffer: posterBuffer,
+					prompt: LIFESTYLE_HUMAN_PROMPT,
+					model: 'flux-kontext',
+				})
+				console.log(`>>> Flux Kontext returned ${enhanced.length} image(s)`)
+				if (enhanced.length > 0) {
+					posterBuffer = await imageOverlayService.enforceFormatAndLogo(enhanced[0], aspectRatio, layout)
+					console.log('>>> Lifestyle editorial: human element added + logo re-applied')
+				}
+			}
+
+			imageBuffers = [posterBuffer]
+		} else {
+			// ── No template or no product image → Freepik text-to-image ──
+			const sizeMap: Record<string, 'square_1_1' | 'portrait_3_4' | 'landscape_4_3'> = {
+				'1:1': 'square_1_1',
+				'4:5': 'portrait_3_4',
+				'1.91:1': 'landscape_4_3',
+			}
+			const size = sizeMap[input.aspect_ratio || ''] || 'square_1_1'
+
+			imageBuffers = await freepikService.generateAIImage({
+				prompt: imagePrompt,
+				style,
+				size,
+				num_images: input.num_images || 1,
+			})
+		}
+
+		if (!imageBuffers.length) throw new BadRequestError('AI image generation returned no usable images')
+
+		// Save buffers to temp files for processing
+		const tempPaths = imageBuffers.map((buffer, i) => {
+			const tempPath = path.join(os.tmpdir(), 'rayna-processing', `ai-gen-${Date.now()}-${i}.png`)
+			fs.writeFileSync(tempPath, buffer)
+			return tempPath
+		})
+
+		let mediaUrls: string[]
+
+		if (apply_overlay) {
+			const overlayTexts = tempPaths.map((_, index) => ({
+				overlay_text: index === 0 ? entry.title : '',
+				cta_text: index === 0 || index === tempPaths.length - 1 ? 'Book Now' : '',
+				subtitle: index === 0 ? (entry.description?.slice(0, 60) || '') : undefined,
+			}))
+
+			const processedSlides = await this.processSlides(tempPaths, overlayTexts, {
+				price: product ? `${product.currency} ${product.price}` : '',
+				offerLabel: product?.offer_label || undefined,
+			}, input.aspect_ratio || 'auto')
+
+			mediaUrls = processedSlides.map((s) => s.url)
+		} else {
+			mediaUrls = await Promise.all(
+				tempPaths.map(async (tempPath, index) => {
+					const buffer = fs.readFileSync(tempPath)
+					let url: string
+					if (cloudinaryService.enabled) {
+						const uploaded = await cloudinaryService.uploadBuffer(buffer, { folder: 'rayna/ai-generated' })
+						url = uploaded.secure_url
+					} else {
+						const fileName = `ai-gen-${Date.now()}-${index}.png`
+						const destPath = path.join(PROCESSED_DIR, fileName)
+						fs.writeFileSync(destPath, buffer)
+						url = `/uploads/processed/${fileName}`
+					}
+					this.cleanup(tempPath)
+					return url
+				})
+			)
+		}
+
+		// Generate AI caption
+		const captionResult = await aiService.callOpenAIRaw<{ caption: string; hashtags: string[]; cta_text: string }>(`You are a social media copywriter for Rayna Tours, Dubai's top tours & activities company.
+
+RESPOND WITH VALID JSON ONLY:
+{"caption":"the full post caption","hashtags":["hashtag1","hashtag2"],"cta_text":"call to action"}
+
+RULES:
+- Platform: ${entry.platform}
+- Content type: ${entry.content_type}
+- Write an engaging, scroll-stopping caption
+- 10-15 relevant hashtags
+- Platform-appropriate CTA
+${product ? `- Product: ${product.name}, Price: ${product.currency} ${product.price}` : ''}`, `Create post content for:
+Title: ${entry.title}
+Brief: ${entry.description || 'No specific brief'}
+${product ? `Product: ${product.name}` : ''}
+Platform: ${entry.platform} | Type: ${entry.content_type}
+Note: Using AI-generated imagery.`)
+
+		return {
+			media_urls: mediaUrls,
+			ai_content: { caption: captionResult.caption, hashtags: captionResult.hashtags, cta: captionResult.cta_text },
+		}
+	}
+
 	private classifyIntent(product: Product): Intent {
 		if (product.offer_label || (product.compare_at_price && product.compare_at_price > product.price)) return 'SELL'
 		if (product.highlights && product.highlights.length > 0) return 'VALUE'
 		return 'ENGAGEMENT'
+	}
+
+	// ── Public: Apply design template to existing images via OpenAI image editing ──
+
+	async applyDesignTemplate(input: {
+		image_urls: string[]
+		template: DesignTemplate
+		entry: CalendarEntry
+		product?: Product
+		additional_prompt?: string
+	}): Promise<string[]> {
+		const { image_urls, template, entry, product } = input
+		const data = buildPosterData(entry, product)
+
+		// Map template slug to poster layout
+		const layoutMap: Record<string, 'brush-script' | 'heritage' | 'bold-adventure' | 'explorer' | 'lifestyle'> = {
+			'brush-script-escape': 'brush-script',
+			'heritage-cinematic': 'heritage',
+			'bold-adventure': 'bold-adventure',
+			'explorer-minimal': 'explorer',
+			'lifestyle-editorial': 'lifestyle',
+		}
+
+		const layout = layoutMap[template.slug] || 'brush-script' as const
+		const aspectRatio = resolveAspectRatio(entry.platform, entry.post_type)
+
+		// For lifestyle-editorial: generate a short editorial tagline + description via AI
+		let lifestyleTagline = data.tagline
+		let lifestyleDesc = data.subheadline
+		if (template.slug === 'lifestyle-editorial') {
+			try {
+				const copy = await aiService.callOpenAIRaw<{ tagline: string; description: string }>(`You are a world-class travel copywriter at a FAANG-level social media agency. Write luxury editorial copy for a travel poster.
+
+RESPOND WITH VALID JSON ONLY:
+{"tagline":"short emotional subtitle — max 6 words, elegant, evocative","description":"2-3 short poetic lines about the destination experience — max 60 characters total, aspirational, editorial magazine tone"}
+
+RULES:
+- Tagline: dreamy, evocative, max 6 words (e.g. "Serenity, Shores & Island Magic" or "Where Dreams Meet the Horizon")
+- Description: 2-3 short poetic lines, conversational luxury tone, max 60 chars (e.g. "From hidden gems\\nto iconic views,\\ndiscover unforgettable\\nmoments.")
+- No hashtags, no emojis, no exclamation marks
+- Think: Condé Nast Traveler, AFAR Magazine, Kinfolk editorial style`, `Destination: ${entry.title}\nBrief: ${entry.description || 'Premium travel experience'}\n${product ? `Product: ${product.name}` : ''}`)
+
+				lifestyleTagline = copy.tagline || lifestyleTagline
+				lifestyleDesc = copy.description || lifestyleDesc
+			} catch (err: any) {
+				logger.warn(`Lifestyle editorial copy generation failed, using defaults: ${err.message}`)
+			}
+		}
+
+		const posterConfig = {
+			brand_name: data.brand_name,
+			headline: data.headline,
+			subheadline: lifestyleDesc,
+			tagline: lifestyleTagline,
+			price: data.price,
+			includes: data.includes,
+			dates: data.dates,
+			duration: data.duration,
+			contact: data.contact,
+			layout,
+		}
+
+		const resultUrls: string[] = []
+
+		for (let i = 0; i < image_urls.length; i++) {
+			const localPath = await this.downloadImage(image_urls[i], `template-src-${i}`)
+			const imageBuffer = fs.readFileSync(localPath)
+			this.cleanup(localPath)
+
+			let edited = await imageOverlayService.renderPoster(imageBuffer, posterConfig, aspectRatio)
+
+			// Lifestyle Editorial: enhance with AI to add a photorealistic human traveler
+			if (template.slug === 'lifestyle-editorial') {
+				console.log('>>> Lifestyle editorial: calling Flux Kontext Pro to add human traveler...')
+				const enhanced = await aiService.editImage({
+					imageBuffer: edited,
+					prompt: LIFESTYLE_HUMAN_PROMPT,
+					model: 'flux-kontext',
+				})
+				console.log(`>>> Flux Kontext returned ${enhanced.length} image(s)`)
+				if (enhanced.length > 0) {
+					edited = await imageOverlayService.enforceFormatAndLogo(enhanced[0], aspectRatio, layout)
+					console.log('>>> Lifestyle editorial: human element added + logo re-applied')
+				}
+			}
+
+			let url: string
+			if (cloudinaryService.enabled) {
+				const uploaded = await cloudinaryService.uploadBuffer(edited, { folder: 'rayna/designed-posters' })
+				url = uploaded.secure_url
+			} else {
+				const fileName = `designed-poster-${Date.now()}-${i}.png`
+				const destPath = path.join(PROCESSED_DIR, fileName)
+				fs.writeFileSync(destPath, edited)
+				url = `/uploads/processed/${fileName}`
+			}
+			resultUrls.push(url)
+		}
+
+		return resultUrls
 	}
 
 	private async downloadAllImages(imageUrls: string[]): Promise<string[]> {

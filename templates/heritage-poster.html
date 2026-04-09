@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+	* { margin: 0; padding: 0; box-sizing: border-box; }
+
+	body {
+		width: var(--viewport-width);
+		height: var(--viewport-height);
+		overflow: hidden;
+		background: transparent;
+	}
+
+	.container {
+		width: 100%;
+		height: 100%;
+		position: relative;
+	}
+
+	/* ── Gradients ── */
+	.top-vignette {
+		position: absolute;
+		top: 0; left: 0; right: 0;
+		height: 18%;
+		background: linear-gradient(to bottom, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0) 100%);
+	}
+	.bottom-gradient {
+		position: absolute;
+		bottom: 0; left: 0; right: 0;
+		height: 60%;
+		background: linear-gradient(
+			to bottom,
+			rgba(0,0,0,0) 0%,
+			rgba(0,0,0,0.3) 15%,
+			rgba(0,0,0,0.6) 35%,
+			rgba(0,0,0,0.85) 60%,
+			rgba(0,0,0,0.95) 100%
+		);
+	}
+
+	.content {
+		position: absolute;
+		top: 0; left: 0; right: 0; bottom: 0;
+	}
+
+	/* ── Massive script headline (destination name) ── */
+.script-headline {
+	position: absolute;
+	top: 10%;
+	width: 100%;
+	text-align: center;
+	font-family: 'Playlist Script', cursive;
+	font-size: var(--headline-font-size, 18vh);
+	font-weight: 400;
+
+	/* 🔥 IMPORTANT FIXES */
+	display: inline-block; /* required */
+	color: transparent; /* fallback */
+	-webkit-text-fill-color: transparent;
+
+	background: linear-gradient(
+		180deg,
+		#f7e7c3 0%,
+		#e2c08c 40%,
+		#caa46a 70%,
+		#f7e7c3 100%
+	);
+
+	background-clip: text;
+	-webkit-background-clip: text;
+
+	filter:
+		drop-shadow(0 2px 6px rgba(0,0,0,0.6))
+		drop-shadow(0 6px 20px rgba(0,0,0,0.5));
+
+	line-height: 1.2;
+	letter-spacing: 1px;
+	padding: 2vh 4vw;
+	transform: scaleY(1.05);
+}
+
+	/* ── "HERITAGE . CULTURE . ESCAPE" ── */
+	.keywords {
+		position: absolute;
+		top: 72.5%;
+		width: 100%;
+		text-align: center;
+		font-family: Georgia, 'Times New Roman', serif;
+		font-size: 2vh;
+		color: rgba(232,213,181,0.85);
+		letter-spacing: 5px;
+		text-shadow: 0 2px 3px rgba(0,0,0,0.6);
+	}
+
+	/* ── Ornamental divider ── */
+	.divider {
+		position: absolute;
+		top: 75%;
+		left: 50%;
+		transform: translateX(-50%);
+		width: 22%;
+		text-align: center;
+		line-height: 1;
+	}
+	.divider svg {
+		width: 100%;
+		height: auto;
+		filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4));
+	}
+
+	/* ── "THE" label ── */
+	.the-label {
+		position: absolute;
+		top: 62%;
+		width: 100%;
+		text-align: center;
+		font-family: Georgia, 'Times New Roman', serif;
+		font-size: 3.8vh;
+		font-weight: 400;
+		/* color: #E8D5B5; */
+		color: transparent; /* fallback */
+	-webkit-text-fill-color: transparent;
+
+	background: linear-gradient(
+		180deg,
+		#faf0d8 0%,
+		#ebd4a6 40%,
+		#dbbe85 70%,
+		#faf0d8 100%
+	);
+
+	background-clip: text;
+	-webkit-background-clip: text;
+
+	filter:
+		drop-shadow(0 2px 6px rgba(0,0,0,0.6))
+		drop-shadow(0 6px 20px rgba(0,0,0,0.5));
+		letter-spacing: 10px;
+		text-shadow: 0 2px 4px rgba(0,0,0,0.6);
+	}
+
+	/* ── "BALI EXPERIENCE" ── */
+	.main-title {
+		position: absolute;
+		top: 67%;
+		width: 100%;
+		text-align: center;
+		padding: 0 5%;
+		font-family: Georgia, 'Times New Roman', serif;
+		font-size: 4.8vh;
+		font-weight: 700;
+		/* color: #E8D5B5; */
+		color: transparent; /* fallback */
+	-webkit-text-fill-color: transparent;
+
+	background: linear-gradient(
+		180deg,
+		#faf0d8 0%,
+		#ebd4a6 40%,
+		#dbbe85 70%,
+		#faf0d8 100%
+	);
+
+	background-clip: text;
+	-webkit-background-clip: text;
+
+	filter:
+		drop-shadow(0 2px 6px rgba(0,0,0,0.6))
+		drop-shadow(0 6px 20px rgba(0,0,0,0.5));
+		letter-spacing: 4px;
+		text-shadow: 0 2px 4px rgba(0,0,0,0.6);
+	}
+
+	/* ── Bottom split section ── */
+	.bottom-section {
+		position: absolute;
+		top: 79%;
+		left: 7%;
+		right: 7%;
+		display: flex;
+		justify-content: space-between;
+	}
+
+	/* Vertical gold divider */
+	.vert-divider {
+		width: 1px;
+		background: rgba(200,169,110,0.4);
+		align-self: stretch;
+	}
+
+	/* Left: Includes */
+	.left-col {
+		flex: 1;
+		padding-right: 4%;
+	}
+	.inc-label {
+	
+		font-family: 'Playfair Display', serif;
+        font-style: italic;
+		font-size: 3vh;
+		/* color: #F5F0E8; */
+		color: transparent; /* fallback */
+	-webkit-text-fill-color: transparent;
+
+	background: linear-gradient(
+		180deg,
+		#faf0d8 0%,
+		#ebd4a6 40%,
+		#dbbe85 70%,
+		#faf0d8 100%
+	);
+
+	background-clip: text;
+	-webkit-background-clip: text;
+
+	filter:
+		drop-shadow(0 2px 6px rgba(0,0,0,0.6))
+		drop-shadow(0 6px 20px rgba(0,0,0,0.5));
+		text-shadow: 0 2px 3px rgba(0,0,0,0.6);
+	}
+.inc-item {
+	font-family: 'Montserrat', Arial, sans-serif;
+	font-size: 1.6vh; /* slightly bigger */
+	font-weight: 500; /* less bold → matches image */
+	/* color: rgba(245,240,232,0.9); */
+	color: transparent; /* fallback */
+	-webkit-text-fill-color: transparent;
+
+	background: linear-gradient(
+		180deg,
+		#faf0d8 0%,
+		#ebd4a6 40%,
+		#dbbe85 70%,
+		#faf0d8 100%
+	);
+
+	background-clip: text;
+	-webkit-background-clip: text;
+
+	filter:
+		drop-shadow(0 2px 6px rgba(0,0,0,0.6))
+		drop-shadow(0 6px 20px rgba(0,0,0,0.5));
+
+	letter-spacing: 1.2px; /* tighter */
+	line-height: 1.9; /* less vertical gap */
+
+	text-transform: uppercase;
+	white-space: normal;
+
+	text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+	
+}
+
+	/* Right: Duration + Price */
+	.right-col {
+		flex: 1;
+		padding-left: 4%;
+		text-align: right;
+	}
+	.duration-text {
+		font-family: 'Montserrat', sans-serif;
+		font-size: 2vh;
+		font-weight: 600;
+		color: rgba(232,213,181,0.9);
+		letter-spacing: 3px;
+		text-shadow: 0 2px 3px rgba(0,0,0,0.6);
+	}
+	.starting-label {
+		margin-top: 1.8vh;
+		font-family: 'Montserrat', Arial, sans-serif;
+		font-size: 1.4vh;
+		font-weight: 600;
+		color: rgba(232,213,181,0.7);
+		letter-spacing: 3px;
+		text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+	}
+	.price-line {
+		display: flex;
+		align-items: baseline;
+		justify-content: flex-end;
+		gap: 0.8vh;
+		margin-top: -1.5vh;
+	}
+	.price-currency {
+		top:70%;
+		font-family: 'Playfair Display', serif;
+		font-size: 2.1vh;
+		font-weight: 700;
+		color: rgba(232,213,181,0.9);
+		letter-spacing: 1px;
+		text-shadow: 0 2px 3px rgba(0,0,0,0.6);
+	}
+	.price-amount {
+	    font-family: 'Playfair Display', serif;
+		font-size: 5vh;
+		font-weight: 700;
+		color: #E8D5B5;
+		letter-spacing: 1px;
+		text-shadow: 0 2px 4px rgba(0,0,0,0.6);
+	}
+
+	/* ── Brand footer ── */
+	.brand-footer {
+		position: absolute;
+		bottom: 3%;
+		width: 100%;
+		text-align: center;
+	}
+	.brand-name {
+		font-family: 'Montserrat', Arial, sans-serif;
+		font-size: 1.9vh;
+		font-weight: 500;
+		color: #F5F0E8;
+		letter-spacing: 4px;
+		text-shadow: 0 2px 3px rgba(0,0,0,0.6);
+	}
+	.brand-tagline {
+		font-family: 'Playlist Script', cursive;
+		font-size: 1.8vh;
+		color: rgba(245,240,232,0.65);
+		margin-top: 0.3vh;
+		text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+	}
+</style>
+</head>
+<body>
+	<div class="container">
+		<div class="top-vignette"></div>
+		<div class="bottom-gradient"></div>
+		<div class="content">
+			<div class="script-headline" style="--headline-font-size: {{headlineFontSize}}">{{headline}}</div>
+
+			<div class="keywords">{{tagline}}</div>
+			<div class="divider">
+				<svg viewBox="0 0 200 24" xmlns="http://www.w3.org/2000/svg">
+					<!-- Left tapered line -->
+					<line x1="0" y1="12" x2="72" y2="12" stroke="#d4b078" stroke-width="0.5" opacity="0.4"/>
+					<!-- Left scrollwork -->
+					<path d="M74,12 C79,5 89,5 94,12" stroke="#d4b078" fill="none" stroke-width="0.8" opacity="0.7"/>
+					<path d="M74,12 C79,19 89,19 94,12" stroke="#d4b078" fill="none" stroke-width="0.8" opacity="0.7"/>
+					<!-- Central diamond -->
+					<path d="M97,12 L100,7 L103,12 L100,17 Z" fill="#d4b078" opacity="0.8"/>
+					<!-- Right scrollwork -->
+					<path d="M106,12 C111,5 121,5 126,12" stroke="#d4b078" fill="none" stroke-width="0.8" opacity="0.7"/>
+					<path d="M106,12 C111,19 121,19 126,12" stroke="#d4b078" fill="none" stroke-width="0.8" opacity="0.7"/>
+					<!-- Right tapered line -->
+					<line x1="128" y1="12" x2="200" y2="12" stroke="#d4b078" stroke-width="0.5" opacity="0.4"/>
+				</svg>
+			</div>
+			<div class="the-label">THE</div>
+			<div class="main-title">{{subheadline}}</div>
+
+			<div class="bottom-section">
+				<div class="left-col">
+					<div class="inc-label">Includes:</div>
+					<div class="inc-item">{{includes}}</div>
+				</div>
+				<div class="vert-divider"></div>
+				<div class="right-col">
+					<div class="duration-text">{{dates}}</div>
+					<div class="starting-label">STARTING FROM</div>
+					<div class="price-line">
+						<span class="price-currency">{{currency}}</span>
+						<span class="price-amount">{{amount}}</span>
+					</div>
+				</div>
+			</div>
+
+			<div class="brand-footer">
+				<div class="brand-name">RAYNA TOURS</div>
+				<div class="brand-tagline">{{brandTagline}}</div>
+			</div>
+		</div>
+	</div>
+</body>
+</html>

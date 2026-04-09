@@ -1,6 +1,13 @@
 import { Request, Response, NextFunction } from 'express'
 import { postService } from './post.service'
-import { createPostSchema, updatePostSchema, schedulePostSchema, rejectPostSchema, approvePostSchema } from './post.validator'
+import {
+	createPostSchema,
+	updatePostSchema,
+	publishPostSchema,
+	schedulePostSchema,
+	rejectPostSchema,
+	approvePostSchema,
+} from './post.validator'
 import ResponseService from '../../utils/response.service'
 import { BadRequestError } from '../../errors/api-errors'
 
@@ -105,8 +112,11 @@ class PostController extends ResponseService {
 
 	publish = async (req: Request, res: Response, next: NextFunction) => {
 		try {
+			const { error, value } = publishPostSchema.validate(req.body, { abortEarly: false, stripUnknown: true })
+			if (error) throw new BadRequestError(error.details.map((d) => d.message).join(', '))
+
 			const userId = req.user.userId
-			const { statusCode, payload, message } = await postService.publish(req.params.id, userId)
+			const { statusCode, payload, message } = await postService.publish(req.params.id, userId, value.social_account_ids)
 			return this.sendResponse(res, statusCode, payload, message)
 		} catch (err) {
 			next(err)
@@ -118,7 +128,11 @@ class PostController extends ResponseService {
 			const { error, value } = schedulePostSchema.validate(req.body, { abortEarly: false, stripUnknown: true })
 			if (error) throw new BadRequestError(error.details.map((d) => d.message).join(', '))
 
-			const { statusCode, payload, message } = await postService.schedule(req.params.id, value.scheduled_at)
+			const { statusCode, payload, message } = await postService.schedule(
+				req.params.id,
+				value.scheduled_at,
+				value.social_account_ids
+			)
 			return this.sendResponse(res, statusCode, payload, message)
 		} catch (err) {
 			next(err)

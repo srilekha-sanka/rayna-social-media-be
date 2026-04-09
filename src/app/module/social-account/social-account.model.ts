@@ -2,7 +2,6 @@ import { Table, Column, DataType, ForeignKey, BelongsTo } from 'sequelize-typesc
 import { Optional } from 'sequelize'
 import BaseModel from '../../utils/base.model'
 import { BaseAttributes, BaseModelType } from '../../interfaces/BaseAttributes'
-import Brand from '../brand/brand.model'
 import User from '../user/user.model'
 
 type SocialPlatform =
@@ -21,9 +20,8 @@ type AccountStatus = 'CONNECTED' | 'EXPIRED' | 'DISCONNECTED' | 'PENDING'
 
 interface SocialAccountAttributes extends BaseAttributes {
 	id: string
-	brand_id: string
 	platform: SocialPlatform
-	outstand_account_id: string | null
+	postforme_account_id: string | null
 	display_name: string | null
 	username: string | null
 	avatar_url: string | null
@@ -38,7 +36,7 @@ interface SocialAccountCreationAttributes
 	extends Optional<
 		SocialAccountAttributes,
 		| BaseModelType
-		| 'outstand_account_id'
+		| 'postforme_account_id'
 		| 'display_name'
 		| 'username'
 		| 'avatar_url'
@@ -54,16 +52,6 @@ interface SocialAccountCreationAttributes
 	timestamps: true,
 })
 class SocialAccount extends BaseModel<SocialAccountAttributes, SocialAccountCreationAttributes> {
-	@ForeignKey(() => Brand)
-	@Column({
-		type: DataType.UUID,
-		allowNull: false,
-	})
-	brand_id!: string
-
-	@BelongsTo(() => Brand)
-	brand!: Brand
-
 	@Column({
 		type: DataType.ENUM(
 			'facebook',
@@ -85,7 +73,7 @@ class SocialAccount extends BaseModel<SocialAccountAttributes, SocialAccountCrea
 		type: DataType.STRING(255),
 		allowNull: true,
 	})
-	outstand_account_id?: string
+	postforme_account_id?: string
 
 	@Column({
 		type: DataType.STRING(255),
