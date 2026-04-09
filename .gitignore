@@ -1,5 +1,10 @@
 node_modules/
 dist/
 .env
+.env.local
 *.js.map
 uploads/
+
+# Generated / local-only output
+scripts/output/
+*.tsbuildinfo

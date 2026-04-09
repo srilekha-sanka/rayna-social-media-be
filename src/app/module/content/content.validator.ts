@@ -7,8 +7,9 @@ export const generateCarouselSchema = Joi.object({
 	product_id: Joi.string().uuid().required(),
 	campaign_id: Joi.string().uuid().optional(),
 	platform: Joi.string().lowercase().valid(...VALID_PLATFORMS).required(),
-	slide_count: Joi.number().integer().min(2).max(10).optional(),
+	slide_count: Joi.number().integer().min(1).max(10).optional(),
 	intent: Joi.string().valid(...VALID_INTENTS).optional(),
+	template_id: Joi.string().uuid().optional(),
 })
 
 export const generateReelSchema = Joi.object({

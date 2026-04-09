@@ -12,8 +12,8 @@ import { templateRenderer, TemplateData } from './template-renderer.service'
 // ── Types ────────────────────────────────────────────────────────────
 
 export type AspectRatio = '1:1' | '4:5' | '1.91:1' | 'auto'
-export type TemplateName = 'gradient-cta' | 'minimal-text' | 'full-bleed' | 'poster' | 'heritage-poster' | 'adventure-poster' | 'explorer-poster' | 'lifestyle-poster'
-export type PosterLayout = 'brush-script' | 'heritage' | 'bold-adventure' | 'explorer' | 'lifestyle'
+export type TemplateName = 'gradient-cta' | 'minimal-text' | 'full-bleed' | 'poster' | 'heritage-poster' | 'adventure-poster' | 'explorer-poster' | 'lifestyle-poster' | 'luxury-poster' | 'promo-poster' | 'nature-poster' | 'culinary-poster' | 'city-poster' | 'family-poster' | 'collage-poster'
+export type PosterLayout = 'brush-script' | 'heritage' | 'bold-adventure' | 'explorer' | 'lifestyle' | 'luxury' | 'promo' | 'nature' | 'culinary' | 'city' | 'family' | 'collage'
 
 export interface PosterConfig {
 	brand_name: string
@@ -25,7 +25,10 @@ export interface PosterConfig {
 	dates?: string
 	duration?: string
 	contact?: string
+	location?: string
+	promo_code?: string
 	layout?: PosterLayout
+	collageBuffers?: Buffer[]
 }
 
 export interface OverlayConfig {
@@ -66,6 +69,13 @@ const LAYOUT_TO_TEMPLATE: Record<string, TemplateName> = {
 	'bold-adventure': 'adventure-poster',
 	'explorer': 'explorer-poster',
 	'lifestyle': 'lifestyle-poster',
+	'luxury': 'luxury-poster',
+	'promo': 'promo-poster',
+	'nature': 'nature-poster',
+	'culinary': 'culinary-poster',
+	'city': 'city-poster',
+	'family': 'family-poster',
+	'collage': 'collage-poster',
 	'brush-script': 'poster',
 }
 
@@ -186,15 +196,16 @@ class ImageOverlayService {
 		const pad = Math.round(w * 0.06)
 		const target: CanvasDimensions = { width: w, height: h, ratio: resolvedRatio }
 
-		// Detect landscape images and extend to portrait via Cloudinary gen fill
+		// Detect landscape images and extend to portrait via Cloudinary gen fill ONLY if target is portrait
 		const metadata = await sharp(imageBuffer).metadata()
 		const srcW = metadata.width || 1080
 		const srcH = metadata.height || 1080
 		const srcRatio = srcW / srcH
+		const isTargetPortrait = h > w
 
 		let baseBuffer: Buffer
-		if (srcRatio > 1.2) {
-			// Landscape → save to temp file for Cloudinary gen fill
+		if (srcRatio > 1.2 && isTargetPortrait) {
+			// Landscape source → Portrait target: Use Gen Fill to avoid cropping edges
 			const tmpPath = path.join(PROCESSED_DIR, `tmp-poster-${Date.now()}.png`)
 			fs.writeFileSync(tmpPath, imageBuffer)
 			try {
@@ -203,6 +214,7 @@ class ImageOverlayService {
 				if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath)
 			}
 		} else {
+			// Target matches source or target is landscape: Clean cover crop is safer and more "cinematic"
 			baseBuffer = await sharp(imageBuffer)
 				.resize(w, h, { fit: 'cover', position: 'attention' })
 				.toBuffer()
@@ -231,11 +243,13 @@ class ImageOverlayService {
 			.png({ quality: 95 })
 			.toBuffer()
 
-		// Composite brand logo on top (skip for layouts that already include a logo in the template)
+		// Composite brand logo on top (disabled: the WOW templates handle brand names natively via elegant typography)
+		/*
 		if (poster.layout !== 'explorer') {
 			const logoPos = this.getLogoPosition(poster.layout || 'brush-script', w, h, pad)
 			result = await this.compositeLogoOnImage(result, logoPos)
 		}
+		*/
 
 		return result
 	}
@@ -356,8 +370,8 @@ class ImageOverlayService {
 
 	private buildPosterTemplateData(poster: PosterConfig, templateName: TemplateName): TemplateData {
 		const base: TemplateData = {
-			brand_name: poster.brand_name,
-			headline: poster.headline,
+			brand_name: poster.brand_name?.toUpperCase() || 'RAYNA TOURS',
+			headline: poster.headline || '',
 			subheadline: poster.subheadline || '',
 			tagline: poster.tagline || '',
 			price: poster.price || '',
@@ -367,144 +381,114 @@ class ImageOverlayService {
 			contact: poster.contact || '',
 		}
 
+		// Helper to format includes
+		const formatIncludes = (separator: string) => {
+			if (!poster.includes) return ''
+			return poster.includes.replace(/[,;]+\s*/g, ' | ').split(' | ').join(separator)
+		}
+
 		switch (templateName) {
 			case 'heritage-poster': {
 				const firstWord = poster.headline.split(/\s+/)[0] || poster.headline
-				const subTitle = poster.subheadline && poster.subheadline.length <= 25
+				const subTitle = poster.subheadline && poster.subheadline.length <= 40
 					? poster.subheadline.toUpperCase()
-					: `${firstWord.toUpperCase()} EXPERIENCE`
-				const hasKeywords = poster.tagline && /[•|·]/.test(poster.tagline)
-				const subtitleKeywords = hasKeywords
-					? poster.tagline!.toUpperCase()
-					: 'HERITAGE \u2022 CULTURE \u2022 ESCAPE'
+					: `${firstWord.toUpperCase()} ADVENTURE`
 				const brandTagline = poster.tagline && !/[•|·]/.test(poster.tagline)
 					? poster.tagline
-					: 'by your side'
-
-				// Dynamic headline size for the big script word
-				const hLen = firstWord.length
-				let hHeadlineFontSize: string
-				if (hLen <= 4) {
-					hHeadlineFontSize = '26vh'    // Bali
-				} else if (hLen <= 7) {
-					hHeadlineFontSize = '20vh'    // Dubai, Oman
-				} else if (hLen <= 10) {
-					hHeadlineFontSize = '16vh'    // Istanbul
-				} else {
-					hHeadlineFontSize = '12vh'    // Marrakech
-				}
-
-				// Parse price
-				const hPriceMatch = (poster.price || '').match(/^(AED|USD|INR|EUR|GBP)?\s*(.+)$/i)
-				const hCurrency = hPriceMatch?.[1]?.toUpperCase() || 'AED'
-				const hAmount = (hPriceMatch?.[2] || poster.price || '').replace('/-', '')
-
-				// Format includes as stacked lines
-				const hIncItems = (poster.includes || '').replace(/[,;]+\s*/g, ' | ').split(' | ')
-				const hIncFormatted = hIncItems.map(i => i.trim().toUpperCase()).join('\n')
+					: 'Curated by Experts'
 
 				return {
 					...base,
 					headline: firstWord,
-					headlineFontSize: hHeadlineFontSize,
 					subheadline: subTitle,
-					tagline: subtitleKeywords,
 					brandTagline,
-					currency: hCurrency,
-					amount: hAmount,
-					includes: hIncFormatted,
+					includes: formatIncludes('\n'),
 				}
 			}
 
 			case 'adventure-poster': {
-				// Parse price into currency + amount
-				const priceMatch = (poster.price || '').match(/^(AED|USD|INR|EUR|GBP)?\s*(.+)$/i)
-				const currency = priceMatch?.[1]?.toUpperCase() || 'AED'
-				const amount = priceMatch?.[2] || poster.price || ''
-				const incItems = (poster.includes || '').replace(/[,;]+\s*/g, ' | ').split(' | ')
-
-				// Dynamic headline size — Kaushan Script, needs to dominate top 35%
-				const advChars = poster.headline.replace(/\s/g, '').length
-				const advWords = poster.headline.trim().split(/\s+/).length
-				let advHeadlineFontSize: string
-				if (advChars <= 5 && advWords === 1) {
-					advHeadlineFontSize = '22vh'    // single short: Bali, Dubai
-				} else if (advChars <= 10 && advWords <= 2) {
-					advHeadlineFontSize = '18vh'    // short pair: Bali Escape
-				} else if (advChars <= 16) {
-					advHeadlineFontSize = '14vh'    // medium: Desert Safari
-				} else {
-					advHeadlineFontSize = '11vh'    // long: Evening Desert Safari
-				}
-
+				const category = (poster.subheadline || 'Adventure').split(/\s+/).slice(0, 2).join(' ')
 				return {
 					...base,
-					headlineFontSize: advHeadlineFontSize,
-					currency,
-					amount,
-					includes: incItems.map(i => i.trim().toUpperCase()).join('   |   '),
+					category,
+					includes: formatIncludes('   •   '),
 				}
 			}
 
 			case 'explorer-poster': {
-				// Build banner text and split contacts
-				const bannerParts: string[] = []
-				if (poster.price) bannerParts.push(`STARTING FROM ${poster.price}`)
-				if (poster.duration) bannerParts.push(poster.duration)
-				else if (poster.dates) bannerParts.push(poster.dates)
-				const contacts = (poster.contact || '').split(/\s*\|\s*/)
-
-				// Sub-locations: only use subheadline if it looks like a short
-				// location list (has separators and is short). Ignore long descriptions.
-				let subLocs = ''
-				if (poster.subheadline) {
-					const hasSeparators = /[,|•·\-]/.test(poster.subheadline)
-					if (hasSeparators && poster.subheadline.length <= 60) {
-						subLocs = poster.subheadline.toUpperCase().replace(/[,|•·]+\s*/g, ' - ')
-					}
-				}
-
-				// Dynamic headline size — Bebas Neue is condensed, so sizes are larger
-				const chars = poster.headline.replace(/\s/g, '').length
-				const words = poster.headline.trim().split(/\s+/).length
-				let headlineFontSize: string
-				if (chars <= 8 && words === 1) {
-					headlineFontSize = '16vh'     // single short word: HIMACHAL, BALI
-				} else if (chars <= 12 && words <= 2) {
-					headlineFontSize = '13vh'     // two short words: JEBEL JAIS
-				} else if (chars <= 18) {
-					headlineFontSize = '10vh'     // medium: EVENING DESERT, MUSEUM FUTURE
-				} else {
-					headlineFontSize = '8vh'      // long: EVENING DESERT SAFARI
-				}
-				const logoUrl = env.brand.logoUrl || '' // Pass as marker; renderPoster() will replace with base64 data URI
-
 				return {
 					...base,
-					headline: poster.headline.toUpperCase(),
-					headlineFontSize,
-					logoUrl,
-					subheadline: subLocs,
-					bannerText: bannerParts.join('  |  '),
-					contactLeft: contacts[0]?.trim() || '',
-					contactRight: contacts[1]?.trim() || '',
+					headline: poster.headline.split(/\s+/).slice(0, 2).join('\n'), // Stack first two words max
+					destination: poster.headline,
+					includes: formatIncludes(' • '),
 				}
 			}
 
 			case 'lifestyle-poster': {
-				// Description from subheadline or default
+				const category = 'Exclusive Getaway'
+				const overline = poster.tagline || 'Experience the Extraordinary'
 				const description = poster.subheadline && poster.subheadline.length <= 80
 					? poster.subheadline
-					: 'From hidden gems to iconic views, discover unforgettable moments.'
+					: 'From hidden gems to iconic views, discover unforgettable moments filled with adventure and pure relaxation.'
+
 				return {
 					...base,
-					headline: poster.headline.toUpperCase(),
+					category,
+					overline,
 					description,
+					includes: formatIncludes(' • '),
 				}
 			}
 
-			default:
-				return base
+			case 'luxury-poster': {
+				return { ...base, includes: formatIncludes(' • ') }
+			}
+			case 'promo-poster': {
+				return {
+					...base,
+					promo_code: poster.promo_code || 'TRAVEL20',
+					includes: formatIncludes(' • ')
+				}
+			}
+			case 'nature-poster': {
+				return { ...base, includes: formatIncludes(' • ') }
+			}
+			case 'culinary-poster': {
+				return {
+					...base,
+					location: poster.location || 'Signature Dining',
+					includes: formatIncludes(' • ')
+				}
+			}
+			case 'city-poster': {
+				return { ...base, includes: formatIncludes(' • ') }
+			}
+			case 'family-poster': {
+				return { ...base, includes: formatIncludes(' • ') }
+			}
+
+			case 'collage-poster': {
+				return {
+					...base,
+					promo_code: poster.promo_code || 'TRAVEL25',
+					photo_1: poster.collageBuffers?.[1] ? `data:image/jpeg;base64,${poster.collageBuffers[1].toString('base64')}` : '',
+					photo_2: poster.collageBuffers?.[2] ? `data:image/jpeg;base64,${poster.collageBuffers[2].toString('base64')}` : '',
+					photo_3: poster.collageBuffers?.[3] ? `data:image/jpeg;base64,${poster.collageBuffers[3].toString('base64')}` : '',
+				}
+			}
+
+			case 'poster': // brush-script
+			default: {
+				const destination = poster.headline
+				const eyebrow = poster.subheadline?.slice(0, 30) || 'DREAM VACATION'
+
+				return {
+					...base,
+					destination,
+					eyebrow,
+					includes: formatIncludes(' • '),
+				}
+			}
 		}
 	}
 
