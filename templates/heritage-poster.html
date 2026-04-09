@@ -195,20 +195,62 @@
 		padding-right: 4%;
 	}
 	.inc-label {
-		font-family: 'Great Vibes', cursive;
+	
+		font-family: 'Playfair Display', serif;
+        font-style: italic;
 		font-size: 3vh;
-		color: #F5F0E8;
+		/* color: #F5F0E8; */
+		color: transparent; /* fallback */
+	-webkit-text-fill-color: transparent;
+
+	background: linear-gradient(
+		180deg,
+		#faf0d8 0%,
+		#ebd4a6 40%,
+		#dbbe85 70%,
+		#faf0d8 100%
+	);
+
+	background-clip: text;
+	-webkit-background-clip: text;
+
+	filter:
+		drop-shadow(0 2px 6px rgba(0,0,0,0.6))
+		drop-shadow(0 6px 20px rgba(0,0,0,0.5));
 		text-shadow: 0 2px 3px rgba(0,0,0,0.6);
 	}
-	.inc-item {
-		font-family: 'Montserrat', Arial, sans-serif;
-		font-size: 1.3vh;
-		font-weight: 600;
-		color: rgba(245,240,232,0.85);
-		letter-spacing: 1.5px;
-		line-height: 2.2;
-		text-shadow: 0 1px 3px rgba(0,0,0,0.6);
-	}
+.inc-item {
+	font-family: 'Montserrat', Arial, sans-serif;
+	font-size: 1.6vh; /* slightly bigger */
+	font-weight: 500; /* less bold → matches image */
+	/* color: rgba(245,240,232,0.9); */
+	color: transparent; /* fallback */
+	-webkit-text-fill-color: transparent;
+
+	background: linear-gradient(
+		180deg,
+		#faf0d8 0%,
+		#ebd4a6 40%,
+		#dbbe85 70%,
+		#faf0d8 100%
+	);
+
+	background-clip: text;
+	-webkit-background-clip: text;
+
+	filter:
+		drop-shadow(0 2px 6px rgba(0,0,0,0.6))
+		drop-shadow(0 6px 20px rgba(0,0,0,0.5));
+
+	letter-spacing: 1.2px; /* tighter */
+	line-height: 1.9; /* less vertical gap */
+
+	text-transform: uppercase;
+	white-space: normal;
+
+	text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+	
+}
 
 	/* Right: Duration + Price */
 	.right-col {
@@ -217,20 +259,20 @@
 		text-align: right;
 	}
 	.duration-text {
-		font-family: 'Montserrat', Arial, sans-serif;
-		font-size: 1.8vh;
-		font-weight: 700;
-		color: #F5F0E8;
-		letter-spacing: 2px;
+		font-family: 'Montserrat', sans-serif;
+		font-size: 2vh;
+		font-weight: 600;
+		color: rgba(232,213,181,0.9);
+		letter-spacing: 3px;
 		text-shadow: 0 2px 3px rgba(0,0,0,0.6);
 	}
 	.starting-label {
-		margin-top: 1.5vh;
+		margin-top: 1.8vh;
 		font-family: 'Montserrat', Arial, sans-serif;
-		font-size: 1.2vh;
-		font-weight: 500;
-		color: rgba(245,240,232,0.8);
-		letter-spacing: 2px;
+		font-size: 1.4vh;
+		font-weight: 600;
+		color: rgba(232,213,181,0.7);
+		letter-spacing: 3px;
 		text-shadow: 0 1px 3px rgba(0,0,0,0.6);
 	}
 	.price-line {
@@ -238,21 +280,22 @@
 		align-items: baseline;
 		justify-content: flex-end;
 		gap: 0.8vh;
-		margin-top: 0.3vh;
+		margin-top: -1.5vh;
 	}
 	.price-currency {
-		font-family: 'Montserrat', Arial, sans-serif;
-		font-size: 2.5vh;
+		top:70%;
+		font-family: 'Playfair Display', serif;
+		font-size: 2.1vh;
 		font-weight: 700;
-		color: #F5F0E8;
+		color: rgba(232,213,181,0.9);
 		letter-spacing: 1px;
 		text-shadow: 0 2px 3px rgba(0,0,0,0.6);
 	}
 	.price-amount {
-		font-family: Georgia, 'Times New Roman', serif;
+	    font-family: 'Playfair Display', serif;
 		font-size: 5vh;
 		font-weight: 700;
-		color: #F5F0E8;
+		color: #E8D5B5;
 		letter-spacing: 1px;
 		text-shadow: 0 2px 4px rgba(0,0,0,0.6);
 	}
@@ -266,14 +309,14 @@
 	}
 	.brand-name {
 		font-family: 'Montserrat', Arial, sans-serif;
-		font-size: 1.4vh;
-		font-weight: 600;
+		font-size: 1.9vh;
+		font-weight: 500;
 		color: #F5F0E8;
 		letter-spacing: 4px;
 		text-shadow: 0 2px 3px rgba(0,0,0,0.6);
 	}
 	.brand-tagline {
-		font-family: 'Great Vibes', cursive;
+		font-family: 'Playlist Script', cursive;
 		font-size: 1.8vh;
 		color: rgba(245,240,232,0.65);
 		margin-top: 0.3vh;
