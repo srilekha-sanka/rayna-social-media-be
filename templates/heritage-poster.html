@@ -45,69 +45,131 @@
 	}
 
 	/* ── Massive script headline (destination name) ── */
-	.script-headline {
+.script-headline {
+	position: absolute;
+	top: 10%;
+	width: 100%;
+	text-align: center;
+	font-family: 'Playlist Script', cursive;
+	font-size: var(--headline-font-size, 18vh);
+	font-weight: 400;
+
+	/* 🔥 IMPORTANT FIXES */
+	display: inline-block; /* required */
+	color: transparent; /* fallback */
+	-webkit-text-fill-color: transparent;
+
+	background: linear-gradient(
+		180deg,
+		#f7e7c3 0%,
+		#e2c08c 40%,
+		#caa46a 70%,
+		#f7e7c3 100%
+	);
+
+	background-clip: text;
+	-webkit-background-clip: text;
+
+	filter:
+		drop-shadow(0 2px 6px rgba(0,0,0,0.6))
+		drop-shadow(0 6px 20px rgba(0,0,0,0.5));
+
+	line-height: 1.2;
+	letter-spacing: 1px;
+	padding: 2vh 4vw;
+	transform: scaleY(1.05);
+}
+
+	/* ── "HERITAGE . CULTURE . ESCAPE" ── */
+	.keywords {
 		position: absolute;
-		top: 12%;
+		top: 72.5%;
 		width: 100%;
 		text-align: center;
-		font-family: 'Great Vibes', 'Dancing Script', cursive;
-		font-size: var(--headline-font-size, 20vh);
-		color: #F5F0E8;
-		line-height: 0.9;
-		text-shadow: 2px 4px 8px rgba(0,0,0,0.85);
+		font-family: Georgia, 'Times New Roman', serif;
+		font-size: 2vh;
+		color: rgba(232,213,181,0.85);
+		letter-spacing: 5px;
+		text-shadow: 0 2px 3px rgba(0,0,0,0.6);
+	}
+
+	/* ── Ornamental divider ── */
+	.divider {
+		position: absolute;
+		top: 75%;
+		left: 50%;
+		transform: translateX(-50%);
+		width: 22%;
+		text-align: center;
+		line-height: 1;
+	}
+	.divider svg {
+		width: 100%;
+		height: auto;
+		filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4));
 	}
 
 	/* ── "THE" label ── */
 	.the-label {
 		position: absolute;
-		top: 70%;
+		top: 62%;
 		width: 100%;
 		text-align: center;
 		font-family: Georgia, 'Times New Roman', serif;
-		font-size: 2.2vh;
-		font-weight: 600;
-		color: #F5F0E8;
-		letter-spacing: 6px;
+		font-size: 3.8vh;
+		font-weight: 400;
+		/* color: #E8D5B5; */
+		color: transparent; /* fallback */
+	-webkit-text-fill-color: transparent;
+
+	background: linear-gradient(
+		180deg,
+		#faf0d8 0%,
+		#ebd4a6 40%,
+		#dbbe85 70%,
+		#faf0d8 100%
+	);
+
+	background-clip: text;
+	-webkit-background-clip: text;
+
+	filter:
+		drop-shadow(0 2px 6px rgba(0,0,0,0.6))
+		drop-shadow(0 6px 20px rgba(0,0,0,0.5));
+		letter-spacing: 10px;
 		text-shadow: 0 2px 4px rgba(0,0,0,0.6);
 	}
 
 	/* ── "BALI EXPERIENCE" ── */
 	.main-title {
 		position: absolute;
-		top: 75%;
+		top: 67%;
 		width: 100%;
 		text-align: center;
 		padding: 0 5%;
 		font-family: Georgia, 'Times New Roman', serif;
-		font-size: 4.5vh;
+		font-size: 4.8vh;
 		font-weight: 700;
-		color: #F5F0E8;
+		/* color: #E8D5B5; */
+		color: transparent; /* fallback */
+	-webkit-text-fill-color: transparent;
+
+	background: linear-gradient(
+		180deg,
+		#faf0d8 0%,
+		#ebd4a6 40%,
+		#dbbe85 70%,
+		#faf0d8 100%
+	);
+
+	background-clip: text;
+	-webkit-background-clip: text;
+
+	filter:
+		drop-shadow(0 2px 6px rgba(0,0,0,0.6))
+		drop-shadow(0 6px 20px rgba(0,0,0,0.5));
 		letter-spacing: 4px;
 		text-shadow: 0 2px 4px rgba(0,0,0,0.6);
-	}
-
-	/* ── "HERITAGE . CULTURE . ESCAPE" ── */
-	.keywords {
-		position: absolute;
-		top: 63%;
-		width: 100%;
-		text-align: center;
-		font-family: Georgia, 'Times New Roman', serif;
-		font-size: 1.3vh;
-		color: rgba(245,240,232,0.8);
-		letter-spacing: 4px;
-		text-shadow: 0 2px 3px rgba(0,0,0,0.6);
-	}
-
-	/* ── Divider ── */
-	.divider {
-		position: absolute;
-		top: 55.5%;
-		left: 50%;
-		transform: translateX(-50%);
-		width: 6%;
-		height: 1px;
-		background: rgba(245,240,232,0.35);
 	}
 
 	/* ── Bottom split section ── */
@@ -226,10 +288,25 @@
 		<div class="content">
 			<div class="script-headline" style="--headline-font-size: {{headlineFontSize}}">{{headline}}</div>
 
+			<div class="keywords">{{tagline}}</div>
+			<div class="divider">
+				<svg viewBox="0 0 200 24" xmlns="http://www.w3.org/2000/svg">
+					<!-- Left tapered line -->
+					<line x1="0" y1="12" x2="72" y2="12" stroke="#d4b078" stroke-width="0.5" opacity="0.4"/>
+					<!-- Left scrollwork -->
+					<path d="M74,12 C79,5 89,5 94,12" stroke="#d4b078" fill="none" stroke-width="0.8" opacity="0.7"/>
+					<path d="M74,12 C79,19 89,19 94,12" stroke="#d4b078" fill="none" stroke-width="0.8" opacity="0.7"/>
+					<!-- Central diamond -->
+					<path d="M97,12 L100,7 L103,12 L100,17 Z" fill="#d4b078" opacity="0.8"/>
+					<!-- Right scrollwork -->
+					<path d="M106,12 C111,5 121,5 126,12" stroke="#d4b078" fill="none" stroke-width="0.8" opacity="0.7"/>
+					<path d="M106,12 C111,19 121,19 126,12" stroke="#d4b078" fill="none" stroke-width="0.8" opacity="0.7"/>
+					<!-- Right tapered line -->
+					<line x1="128" y1="12" x2="200" y2="12" stroke="#d4b078" stroke-width="0.5" opacity="0.4"/>
+				</svg>
+			</div>
 			<div class="the-label">THE</div>
 			<div class="main-title">{{subheadline}}</div>
-			<div class="keywords">{{tagline}}</div>
-			<div class="divider"></div>
 
 			<div class="bottom-section">
 				<div class="left-col">
