@@ -25,6 +25,7 @@ function loadFontsCSS(): string {
 		{ family: 'Bebas Neue', file: 'BebasNeue-Regular.ttf', weight: '400', style: 'normal' },
 		{ family: 'Oswald', file: 'Oswald-Bold.ttf', weight: '400 700', style: 'normal' },
 		{ family: 'Kaushan Script', file: 'KaushanScript-Regular.ttf', weight: '400', style: 'normal' },
+		{family: 'Playlist Script', file: 'Playlist-Script.otf', weight: '400', style: 'normal' },
 	]
 
 	return fonts
@@ -32,9 +33,12 @@ function loadFontsCSS(): string {
 		.map(f => {
 			const fontPath = path.join(FONTS_DIR, f.file)
 			const fontData = fs.readFileSync(fontPath).toString('base64')
+			const isOtf = f.file.endsWith('.otf')
+			const mimeType = isOtf ? 'font/opentype' : 'font/truetype'
+			const formatType = isOtf ? 'opentype' : 'truetype'
 			return `@font-face {
 	font-family: '${f.family}';
-	src: url(data:font/truetype;base64,${fontData}) format('truetype');
+	src: url(data:${mimeType};base64,${fontData}) format('${formatType}');
 	font-weight: ${f.weight};
 	font-style: ${f.style};
 }`

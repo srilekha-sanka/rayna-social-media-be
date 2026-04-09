@@ -231,9 +231,11 @@ class ImageOverlayService {
 			.png({ quality: 95 })
 			.toBuffer()
 
-		// Composite brand logo on top
-		const logoPos = this.getLogoPosition(poster.layout || 'brush-script', w, h, pad)
-		result = await this.compositeLogoOnImage(result, logoPos)
+		// Composite brand logo on top (skip for layouts that already include a logo in the template)
+		if (poster.layout !== 'explorer') {
+			const logoPos = this.getLogoPosition(poster.layout || 'brush-script', w, h, pad)
+			result = await this.compositeLogoOnImage(result, logoPos)
+		}
 
 		return result
 	}
@@ -410,7 +412,7 @@ class ImageOverlayService {
 					brandTagline,
 					currency: hCurrency,
 					amount: hAmount,
-					includesFormatted: hIncFormatted,
+					includes: hIncFormatted,
 				}
 			}
 
