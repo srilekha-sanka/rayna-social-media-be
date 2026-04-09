@@ -8,7 +8,7 @@ import Post from '../post/post.model'
 import Campaign from '../campaign/campaign.model'
 import User from '../user/user.model'
 import { aiService } from '../ai/ai.service'
-import { imageOverlayService, AspectRatio } from '../image/image-overlay.service'
+import { imageOverlayService, AspectRatio, PosterConfig } from '../image/image-overlay.service'
 import { cloudinaryService } from '../cloudinary/cloudinary.service'
 import { freepikService } from '../freepik/freepik.service'
 import CalendarEntry from '../content-studio/calendar-entry.model'
@@ -562,7 +562,7 @@ RULES:
 				}
 			}
 
-			let posterBuffer = await imageOverlayService.renderPoster(referenceBuffer, {
+			const posterConfig: PosterConfig = {
 				brand_name: data.brand_name,
 				headline: data.headline,
 				subheadline: lfSubheadline,
@@ -573,21 +573,24 @@ RULES:
 				duration: data.duration,
 				contact: data.contact,
 				layout,
-			}, aspectRatio)
+			}
 
-			// Lifestyle Editorial: enhance with AI to add a photorealistic human traveler
+			let posterBuffer: Buffer
+
+			// Lifestyle Editorial: AI adds human FIRST on the raw image, then overlay text on top
 			if (template.slug === 'lifestyle-editorial') {
 				console.log('>>> Lifestyle editorial: calling Flux Kontext Pro to add human traveler...')
 				const enhanced = await aiService.editImage({
-					imageBuffer: posterBuffer,
+					imageBuffer: referenceBuffer,
 					prompt: LIFESTYLE_HUMAN_PROMPT,
 					model: 'flux-kontext',
 				})
 				console.log(`>>> Flux Kontext returned ${enhanced.length} image(s)`)
-				if (enhanced.length > 0) {
-					posterBuffer = await imageOverlayService.enforceFormatAndLogo(enhanced[0], aspectRatio, layout)
-					console.log('>>> Lifestyle editorial: human element added + logo re-applied')
-				}
+				const baseForOverlay = enhanced.length > 0 ? enhanced[0] : referenceBuffer
+				posterBuffer = await imageOverlayService.renderPoster(baseForOverlay, posterConfig, aspectRatio)
+				console.log('>>> Lifestyle editorial: human element added + overlay applied')
+			} else {
+				posterBuffer = await imageOverlayService.renderPoster(referenceBuffer, posterConfig, aspectRatio)
 			}
 
 			imageBuffers = [posterBuffer]
@@ -750,21 +753,22 @@ RULES:
 			const imageBuffer = fs.readFileSync(localPath)
 			this.cleanup(localPath)
 
-			let edited = await imageOverlayService.renderPoster(imageBuffer, posterConfig, aspectRatio)
+			let edited: Buffer
 
-			// Lifestyle Editorial: enhance with AI to add a photorealistic human traveler
+			// Lifestyle Editorial: AI adds human FIRST on raw image, then overlay text on top
 			if (template.slug === 'lifestyle-editorial') {
 				console.log('>>> Lifestyle editorial: calling Flux Kontext Pro to add human traveler...')
 				const enhanced = await aiService.editImage({
-					imageBuffer: edited,
+					imageBuffer,
 					prompt: LIFESTYLE_HUMAN_PROMPT,
 					model: 'flux-kontext',
 				})
 				console.log(`>>> Flux Kontext returned ${enhanced.length} image(s)`)
-				if (enhanced.length > 0) {
-					edited = await imageOverlayService.enforceFormatAndLogo(enhanced[0], aspectRatio, layout)
-					console.log('>>> Lifestyle editorial: human element added + logo re-applied')
-				}
+				const baseForOverlay = enhanced.length > 0 ? enhanced[0] : imageBuffer
+				edited = await imageOverlayService.renderPoster(baseForOverlay, posterConfig, aspectRatio)
+				console.log('>>> Lifestyle editorial: human element added + overlay applied')
+			} else {
+				edited = await imageOverlayService.renderPoster(imageBuffer, posterConfig, aspectRatio)
 			}
 
 			let url: string

@@ -11,6 +11,7 @@ import { contentRouter } from './module/content/content.routes'
 import { socialAccountRouter, socialAccountPublicRouter } from './module/social-account/social-account.routes'
 import { contentStudioRouter } from './module/content-studio/content-studio.routes'
 import freepikRouter from './module/freepik/freepik.routes'
+import { analyticsRouter } from './module/analytics/analytics.routes'
 import { verifyToken } from './middlewares/verifyAuth'
 
 const routes = express.Router()
@@ -28,5 +29,6 @@ routes.use('/social-accounts', socialAccountPublicRouter)
 routes.use('/social-accounts', verifyToken, socialAccountRouter)
 routes.use('/content-studio', verifyToken, contentStudioRouter)
 routes.use('/stock-media', verifyToken, freepikRouter)
+routes.use('/analytics', verifyToken, analyticsRouter)
 
 export default routes
