@@ -26,6 +26,10 @@ function loadFontsCSS(): string {
 		{ family: 'Oswald', file: 'Oswald-Bold.ttf', weight: '400 700', style: 'normal' },
 		{ family: 'Kaushan Script', file: 'KaushanScript-Regular.ttf', weight: '400', style: 'normal' },
 		{family: 'Playlist Script', file: 'Playlist-Script.otf', weight: '400', style: 'normal' },
+		{ family: 'Playfair Display', file: 'PlayfairDisplay.ttf', weight: '100 900', style: 'normal' },
+		{ family: 'Cormorant Garamond', file: 'CormorantGaramond.ttf', weight: '100 900', style: 'normal' },
+		{ family: 'Cormorant Garamond', file: 'CormorantGaramond-Italic.ttf', weight: '100 900', style: 'italic' },
+		{ family: 'Brittany Signature', file: 'BrittanySignature.ttf', weight: '400', style: 'normal' },
 	]
 
 	return fonts
@@ -46,10 +50,8 @@ function loadFontsCSS(): string {
 		.join('\n')
 }
 
-let fontsCSS: string | null = null
 function getFontsCSS(): string {
-	if (!fontsCSS) fontsCSS = loadFontsCSS()
-	return fontsCSS
+	return loadFontsCSS()
 }
 
 // ── Service ──────────────────────────────────────────────────────────
@@ -109,17 +111,11 @@ class TemplateRendererService {
 	// ── Template loading ────────────────────────────────────────────
 
 	private loadTemplate(templateName: string): string {
-		const cached = this.templateCache.get(templateName)
-		if (cached) return cached
-
 		const templatePath = path.join(TEMPLATES_DIR, `${templateName}.html`)
 		if (!fs.existsSync(templatePath)) {
 			throw new Error(`Template not found: ${templateName} (looked at ${templatePath})`)
 		}
-
-		const html = fs.readFileSync(templatePath, 'utf-8')
-		this.templateCache.set(templateName, html)
-		return html
+		return fs.readFileSync(templatePath, 'utf-8')
 	}
 
 	clearCache(): void {
