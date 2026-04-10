@@ -1,9 +1,17 @@
-import Anthropic from '@anthropic-ai/sdk'
+import OpenAI from 'openai'
+import fetch from 'node-fetch'
+import { fal } from '@fal-ai/client'
 import { env } from '../../../db/config/env.config'
 import { IServiceResponse } from '../../interfaces/IServiceResponse'
 import { BadRequestError } from '../../errors/api-errors'
+import { logger } from '../../common/logger/logging'
 
-const anthropic = new Anthropic({ apiKey: env.claude.apiKey })
+const openai = new OpenAI({ apiKey: env.openai.apiKey })
+
+// Configure fal.ai client
+if (env.fal.apiKey) {
+	fal.config({ credentials: env.fal.apiKey })
+}
 
 interface CaptionInput {
 	product_name: string
@@ -39,7 +47,7 @@ interface CaptionResponse {
 }
 
 interface CarouselResponse {
-	slides: Array<{ overlay_text: string; cta_text: string }>
+	slides: Array<{ overlay_text: string; cta_text: string; subtitle?: string }>
 	caption: string
 	hashtags: string[]
 	cta: string
@@ -47,11 +55,14 @@ interface CarouselResponse {
 
 class AiService {
 	async generateCaption(input: CaptionInput): Promise<IServiceResponse> {
-		if (!env.claude.apiKey) {
-			throw new BadRequestError('CLAUDE_API_KEY is not configured')
+		if (!env.openai.apiKey) {
+			throw new BadRequestError('OPENAI_API_KEY is not configured')
 		}
+		console.log('Generating caption with input:', input)
 
-		const systemPrompt = `You are a social media marketing expert for Rayna Tours, a Dubai-based tours and activities company. Generate engaging social media captions.
+		const systemPrompt = `You are the head of social media marketing at Rayna Tours, Dubai's top-rated tours & activities company. You write captions that SELL — every post should make people stop scrolling, feel the FOMO, and hit "Book Now".
+
+You write like a top travel influencer who genuinely loves Dubai — not like a corporate brand. Your captions feel personal, exciting, and urgent without being pushy.
 
 Always respond in valid JSON format with this exact structure:
 {
@@ -60,34 +71,54 @@ Always respond in valid JSON format with this exact structure:
   "cta": "call to action text"
 }
 
-Rules:
+Caption Writing Rules:
 - Generate exactly 3 caption variants (short, medium, long)
-- Generate 10-15 relevant hashtags
-- CTA should match the intent: SELL → "Book Now" style, VALUE → "Learn More" style, ENGAGEMENT → "Tell us / Tag a friend" style
-- Tone: ${input.tone || 'professional yet friendly'}
+- SHORT: 1-2 punchy lines that stop the scroll. Use curiosity or a bold statement. End with CTA.
+- MEDIUM: Hook → experience highlight → social proof/urgency → CTA. 3-5 lines.
+- LONG: Storytelling format — paint the picture so vivid they can FEEL the experience. Include sensory details (what they'll see, feel, taste). End with urgency + CTA.
+- EVERY caption MUST include: a scroll-stopping hook in the first line, at least one emoji per sentence, a clear call-to-action
+- Use power words: "limited spots", "selling fast", "you won't believe", "insider tip", "only in Dubai", "bucket list", "once in a lifetime"
+- ${input.offer ? `HIGHLIGHT THE OFFER — make it feel like they\'d be crazy to miss it. Use "🔥" or "⚡" near the offer.` : 'If no specific offer, create urgency with "Book today & save" or "DM us for exclusive rates"'}
+- Tone: ${input.tone || 'excited travel influencer — think "your cool friend who lives in Dubai and knows all the best spots"'}
 - Platform: ${input.platform} (respect character limits)
-- Respond with ONLY the JSON object, no other text`
+- NEVER sound robotic, generic, or corporate. No "embark on a journey" or "immerse yourself" — talk like a real person.
+- Use line breaks for readability. Each new thought = new line.
+
+Hashtag Rules:
+- Generate 15-20 hashtags strategically mixed:
+  - 3-4 brand: #RaynaTours #RaynaExperiences #VisitDubaiWithRayna
+  - 3-4 high-volume discovery: #Dubai #DubaiLife #DubaiTravel #ThingsToDo
+  - 3-4 niche/product-specific: based on the actual experience
+  - 3-4 emotional/trending: #BucketList #TravelGoals #FOMO #WeekendVibes
+  - 2-3 location-specific: #DubaiMarina #JBR #Atlantis etc.
+- Put the most important hashtags first
+
+CTA Rules:
+- SELL intent → action-driven: "Book Now — Link in Bio 🔗", "Tap to Book ⚡", "Save this + Book later 📌"
+- VALUE intent → curiosity: "Save this for your Dubai trip 📌", "Share with someone who needs this ✈️"
+- ENGAGEMENT intent → interactive: "Tag someone you'd do this with 👇", "Drop a 🔥 if this is on your bucket list", "Would you try this? Yes or No 👇"`
 
 		const userPrompt = `Product: ${input.product_name}
 Description: ${input.product_description}
-${input.usp ? `USP: ${input.usp}` : ''}
-${input.offer ? `Offer: ${input.offer}` : ''}
+${input.usp ? `What makes it special: ${input.usp}` : ''}
+${input.offer ? `Current offer: ${input.offer} — MAKE THIS THE HERO OF THE CAPTION` : ''}
 Intent: ${input.intent}
 Platform: ${input.platform}
 
-Generate captions, hashtags, and CTA for this product.`
+Write 3 caption variants that would make someone book this RIGHT NOW. Think: what would make YOU stop scrolling and tap "Book Now"?`
 
-		const result = await this.callClaude<CaptionResponse>(systemPrompt, userPrompt)
-
+		const result = await this.callOpenAI<CaptionResponse>(systemPrompt, userPrompt)
+console.log('Generating caption with input:', systemPrompt, userPrompt)
 		return { statusCode: 200, payload: result, message: 'Caption generated successfully' }
 	}
 
+	
 	async generateHashtags(input: HashtagInput): Promise<IServiceResponse> {
-		if (!env.claude.apiKey) {
-			throw new BadRequestError('CLAUDE_API_KEY is not configured')
+		if (!env.openai.apiKey) {
+			throw new BadRequestError('OPENAI_API_KEY is not configured')
 		}
 
-		const systemPrompt = `You are a social media hashtag expert. Generate relevant, high-performing hashtags for tourism content.
+		const systemPrompt = `You are a social media growth strategist for Rayna Tours, Dubai's leading tours & activities company. You know exactly which hashtags drive reach, discovery, and bookings.
 
 Always respond in valid JSON format:
 {
@@ -100,100 +131,172 @@ Always respond in valid JSON format:
   "all": ["#hashtag1", "#hashtag2"]
 }
 
-Rules:
-- 10-15 hashtags total
-- Mix of brand, product, geo, and trending hashtags
-- Platform: ${input.platform} (Instagram allows 30, X/Twitter 2-3 recommended)
-- Respond with ONLY the JSON object, no other text`
+Strategy:
+- 20-25 hashtags total, ordered by importance
+- brand (3-4): #RaynaTours #RaynaExperiences #VisitDubaiWithRayna + 1 campaign-specific
+- product (4-5): specific to this experience — what someone would actually search for
+- geo (4-5): city, landmarks, neighborhoods near the experience. Be SPECIFIC — #AtlantisDubai not just #Dubai
+- trending (4-5): travel/lifestyle hashtags that are currently high-volume: #TravelGoals #BucketList #DubaiLife #WeekendPlans #ExploreMore
+- emotional (3-4): hashtags that match the FEELING: #AdventureAwaits #MakingMemories #LiveYourBestLife #NoFOMO
+- Platform: ${input.platform} (Instagram: use all 25, X/Twitter: pick top 3-4 only)
+- NEVER use dead/low-volume hashtags. Every hashtag should have real search volume.`
 
 		const userPrompt = `Product: ${input.product_name}
 ${input.category ? `Category: ${input.category}` : ''}
 ${input.city ? `City: ${input.city}` : ''}
-Platform: ${input.platform}`
+Platform: ${input.platform}
 
-		const result = await this.callClaude(systemPrompt, userPrompt)
+Generate hashtags that will maximize reach AND attract people who are actually ready to book activities in Dubai.`
+
+		const result = await this.callOpenAI(systemPrompt, userPrompt)
 
 		return { statusCode: 200, payload: result, message: 'Hashtags generated successfully' }
 	}
 
 	async generateCarouselContent(input: CarouselCaptionInput): Promise<IServiceResponse> {
-		if (!env.claude.apiKey) {
-			throw new BadRequestError('CLAUDE_API_KEY is not configured')
+		if (!env.openai.apiKey) {
+			throw new BadRequestError('OPENAI_API_KEY is not configured')
 		}
 
-		const systemPrompt = `You are a social media content designer for Rayna Tours. Generate text content for a carousel post (multiple image slides).
+		const systemPrompt = `You are the creative director at Rayna Tours — Dubai's most-booked tours & activities company. You design carousel posts that CONVERT. Every carousel should tell a mini-story that makes someone swipe through ALL slides and hit "Book Now" at the end.
 
 Always respond in valid JSON format:
 {
   "slides": [
-    { "overlay_text": "short punchy text for slide", "cta_text": "CTA for slide" }
+    { "overlay_text": "short title for the slide", "cta_text": "Book Now", "subtitle": "one-line description" }
   ],
   "caption": "overall post caption",
   "hashtags": ["#hashtag1"],
   "cta": "main CTA text"
 }
 
-Rules:
-- Each slide overlay_text should be 3-8 words MAX (it goes ON the image)
-- First slide: hook/attention grabber
-- Middle slides: key selling points / features
-- Last slide: CTA + price/offer
-- Caption: full post text (not on images)
-- Intent drives the messaging: SELL → urgency + offer, VALUE → benefits + features, ENGAGEMENT → questions + community
-- Respond with ONLY the JSON object, no other text`
+Slide Rules:
+- overlay_text: bold, clean text that goes ON the image. Keep it 2-6 words MAX. It must be readable at a glance on a phone screen.
+- subtitle: one punchy line (under 10 words) that adds context or creates desire. Make it FEEL something.
+- FIRST SLIDE: Product name as overlay_text + "Book Now" CTA + subtitle that hooks curiosity (e.g., "Dubai's #1 rated waterpark experience")
+- MIDDLE SLIDES: Each slide = one irresistible highlight. Pick the most VISUAL, exciting aspects. overlay_text should name the highlight. No CTA on middle slides. No subtitle on middle slides.
+- LAST SLIDE: Urgency or value-driven closing line as overlay_text (e.g., "Starting from AED ${input.price}") + "Book Now" CTA + subtitle with urgency (e.g., "Limited slots available this week")
+- Do NOT include prices on any slide except the last one
+- Make the swipe feel like a journey: hook → best moments → close the deal
+
+Caption Rules (this goes in the post body, not on images):
+- Write like a Dubai travel influencer, NOT a brand
+- First line = scroll-stopping hook (question, bold claim, or curiosity gap)
+- Paint the experience so vividly they can FEEL it — what they'll see, do, feel
+- ${input.offer ? `HIGHLIGHT the offer with 🔥 — make it feel like a steal` : 'Create urgency: "Book this week" or "Save this for your Dubai trip"'}
+- End with a strong CTA: "Link in bio 🔗" or "DM us to book ✨"
+- Use emojis naturally (not excessive)
+- Line breaks between each thought for readability
+
+Hashtag Rules:
+- 15-20 hashtags, strategically mixed:
+  - Brand: #RaynaTours #RaynaExperiences
+  - Discovery: #Dubai #DubaiLife #ThingsToDoInDubai
+  - Product-specific: based on the experience
+  - Emotional: #BucketList #TravelGoals #WeekendVibes
+  - Location: specific landmarks/areas near the experience`
 
 		const userPrompt = `Product: ${input.product_name}
 Description: ${input.product_description}
-Price: ${input.price}
-${input.offer ? `Offer: ${input.offer}` : ''}
+Price: AED ${input.price}
+${input.offer ? `Offer: ${input.offer} — use this to create urgency in the last slide and caption` : ''}
 Intent: ${input.intent}
 Platform: ${input.platform}
 Number of slides: ${input.slide_count}
 
-Generate carousel content for ${input.slide_count} slides.`
+Design a ${input.slide_count}-slide carousel that makes someone book this experience TODAY. Think: what would make a tourist in Dubai stop scrolling, swipe through every slide, and tap "Book Now"?`
 
-		const result = await this.callClaude<CarouselResponse>(systemPrompt, userPrompt)
+		const result = await this.callOpenAI<CarouselResponse>(systemPrompt, userPrompt)
 
 		return { statusCode: 200, payload: result, message: 'Carousel content generated successfully' }
 	}
 
-	private async callClaude<T = any>(systemPrompt: string, userPrompt: string): Promise<T> {
-		const response = await anthropic.messages.create({
-			model: env.claude.model,
-			max_tokens: 1024,
-			system: systemPrompt,
-			messages: [
-				{ role: 'user', content: userPrompt },
-			],
-		})
-
-		const textBlock = response.content.find((block) => block.type === 'text')
-
-		if (!textBlock || textBlock.type !== 'text') {
-			throw new BadRequestError('No response from AI')
-		}
-
-		const jsonStr = this.extractJson(textBlock.text)
-
-		return JSON.parse(jsonStr) as T
+	async callOpenAIRaw<T = any>(systemPrompt: string, userPrompt: string): Promise<T> {
+		return this.callOpenAI<T>(systemPrompt, userPrompt)
 	}
 
 	/**
-	 * Extract JSON from Claude's response — handles cases where
-	 * Claude wraps JSON in markdown code blocks.
+	 * Edit an image using Fal.ai Flux Kontext — overlays text on the original photo
+	 * without regenerating or distorting the background image.
 	 */
-	private extractJson(text: string): string {
-		const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/)
-		if (codeBlockMatch) {
-			return codeBlockMatch[1].trim()
+	async editImage(input: {
+		imageBuffer: Buffer
+		prompt: string
+		model?: 'flux-kontext' | 'ideogram'
+		size?: '1024x1024' | '1024x1536' | '1536x1024'
+		quality?: 'low' | 'medium' | 'high'
+	}): Promise<Buffer[]> {
+		if (!env.fal.apiKey) throw new BadRequestError('FAL_API_KEY is not configured')
+
+		const model = input.model || 'flux-kontext'
+		logger.info(`Fal.ai image edit [${model}]: "${input.prompt.slice(0, 80)}..."`)
+
+		const base64Image = `data:image/png;base64,${input.imageBuffer.toString('base64')}`
+
+		let result: any
+
+		if (model === 'ideogram') {
+			result = await fal.subscribe('fal-ai/ideogram/v3/edit' as any, {
+				input: {
+					image_url: base64Image,
+					prompt: input.prompt,
+					magic_prompt_option: 'ON',
+					num_images: 1,
+				},
+				logs: true,
+				onQueueUpdate: (update: any) => {
+					if (update.status === 'IN_PROGRESS' && update.logs?.length) {
+						logger.info(`Fal.ai ideogram progress: ${update.logs[update.logs.length - 1].message}`)
+					}
+				},
+			}) as any
+		} else {
+			result = await fal.subscribe('fal-ai/flux-kontext/dev' as any, {
+				input: {
+					image_url: base64Image,
+					prompt: input.prompt,
+					num_images: 1,
+					output_format: 'png',
+				},
+				logs: true,
+				onQueueUpdate: (update: any) => {
+					if (update.status === 'IN_PROGRESS' && update.logs?.length) {
+						logger.info(`Fal.ai kontext progress: ${update.logs[update.logs.length - 1].message}`)
+					}
+				},
+			}) as any
 		}
 
-		const jsonMatch = text.match(/\{[\s\S]*\}/)
-		if (jsonMatch) {
-			return jsonMatch[0]
+		const images = result.data?.images || result.images
+		if (!images?.length) throw new BadRequestError('Fal.ai returned no images')
+
+		const buffers: Buffer[] = []
+		for (const img of images) {
+			const imgRes = await fetch(img.url)
+			buffers.push(await imgRes.buffer())
 		}
 
-		return text.trim()
+		return buffers
+	}
+
+	private async callOpenAI<T = any>(systemPrompt: string, userPrompt: string): Promise<T> {
+		const response = await openai.chat.completions.create({
+			model: env.openai.model,
+			messages: [
+				{ role: 'system', content: systemPrompt },
+				{ role: 'user', content: userPrompt },
+			],
+			temperature: 0.7,
+			response_format: { type: 'json_object' },
+		})
+
+		const content = response.choices[0]?.message?.content
+
+		if (!content) {
+			throw new BadRequestError('No response from AI')
+		}
+
+		return JSON.parse(content) as T
 	}
 }
 

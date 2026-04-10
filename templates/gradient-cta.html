@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+	* { margin: 0; padding: 0; box-sizing: border-box; }
+	body {
+		width: var(--viewport-width);
+		height: var(--viewport-height);
+		overflow: hidden;
+		font-family: 'Montserrat', Arial, sans-serif;
+		background: transparent;
+	}
+	.container {
+		width: 100%;
+		height: 100%;
+		display: flex;
+		flex-direction: column;
+		justify-content: flex-end;
+		padding: 7%;
+		position: relative;
+	}
+	.gradient-overlay {
+		position: absolute;
+		bottom: 0;
+		left: 0;
+		right: 0;
+		height: 55%;
+		background: linear-gradient(
+			to bottom,
+			rgba(0,0,0,0) 0%,
+			rgba(0,0,0,0.3) 30%,
+			rgba(0,0,0,0.65) 60%,
+			rgba(0,0,0,0.9) 100%
+		);
+	}
+	.content {
+		position: relative;
+		z-index: 1;
+	}
+	.title {
+		font-size: 5vh;
+		font-weight: 800;
+		color: #FFFFFF;
+		letter-spacing: 0.5px;
+		line-height: 1.15;
+		margin-bottom: 1.6vh;
+	}
+	.cta-btn {
+		display: inline-block;
+		background: {{accentColor}};
+		color: #FFFFFF;
+		font-size: 1.9vh;
+		font-weight: 700;
+		letter-spacing: 2px;
+		padding: 1vh 3.5vh;
+		border-radius: 0.7vh;
+		text-transform: uppercase;
+		margin-bottom: 1.6vh;
+	}
+	.subtitle {
+		font-size: 2.3vh;
+		font-weight: 400;
+		color: rgba(255,255,255,0.9);
+		letter-spacing: 0.3px;
+		line-height: 1.45;
+	}
+</style>
+</head>
+<body>
+	<div class="container">
+		<div class="gradient-overlay"></div>
+		<div class="content">
+			<div class="title">{{title}}</div>
+			<div class="cta-btn">{{ctaText}}</div>
+			<div class="subtitle">{{subtitle}}</div>
+		</div>
+	</div>
+</body>
+</html>

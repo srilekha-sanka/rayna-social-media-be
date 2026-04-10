@@ -719,7 +719,7 @@ Note: Using AI-generated imagery.`)
 		const logoPath = path.join(__dirname, '../../../../assets/rayna-logo.png')
 		const hasLogo = fs.existsSync(logoPath)
 
-		// ── Step 1: Download ALL product images to local files ────────
+		// Download ALL product images to local files
 		const localPaths: string[] = []
 		for (let i = 0; i < image_urls.length; i++) {
 			try {
@@ -735,12 +735,10 @@ Note: Using AI-generated imagery.`)
 			return []
 		}
 
-		// First image = background, all images = photos for collage/mockup
 		const bgImagePath = localPaths[0]
-		const allPhotoPaths = localPaths.slice(0) // all images including first
+		const allPhotoPaths = localPaths.slice(0)
 
 		try {
-			// ── Step 2: Build config with images ─────────────────────────
 			const config: Record<string, unknown> = {
 				headline: data.headline,
 				subheadline: data.subheadline || data.tagline || '',
@@ -757,10 +755,9 @@ Note: Using AI-generated imagery.`)
 					config.subheadline = `on ${data.headline}`
 					config.coupon_code = data.price || 'RAYNOW'
 					config.coupon_label = 'Starting From:'
-					config.bg_type = 'image'       // USE the product image as BG
-					config.photos = allPhotoPaths   // ALL images as polaroid frames
+					config.bg_type = 'image'
+					config.photos = allPhotoPaths
 					break
-
 				case 'hotel-feature':
 					config.pre_headline = `For that Dream Trip:`
 					config.headline = `GRAB UP TO\n${data.price}`
@@ -775,23 +772,19 @@ Note: Using AI-generated imagery.`)
 						{ icon: '\u25C9', text: `Contact\n${data.contact?.split('|')[0]?.trim() || ''}` },
 					]
 					break
-
 				case 'phone-mockup':
 					config.headline = data.headline
 					config.subheadline = data.subheadline || `Book your ${data.headline} trip today!`
 					config.accent_bars = [[37, 99, 235], [220, 38, 38]]
-					// Second image goes inside phone screen; first is background
 					config.phone_image = localPaths.length > 1 ? localPaths[1] : localPaths[0]
 					break
-
 				case 'photo-board':
 					config.headline = `${data.headline} from ${data.price}`
 					config.subheadline = data.includes || 'Tours & Attractions'
 					config.coupon_code = data.duration || data.dates || ''
 					config.bg_texture = 'wood'
-					config.photos = allPhotoPaths   // ALL images as scattered photos
+					config.photos = allPhotoPaths
 					break
-
 				case 'minimal-cta':
 					config.headline = data.headline
 					config.subheadline = data.subheadline || data.tagline || ''
@@ -800,18 +793,16 @@ Note: Using AI-generated imagery.`)
 					config.coupon_label = 'Starting From:'
 					config.headline_position = 'bottom'
 					break
-
 				default:
 					config.bg_type = 'image'
 					config.photos = allPhotoPaths
 					break
 			}
 
-			// ── Step 3: Render ONE composite poster ──────────────────────
 			const outputBuffer = await pythonTemplateRenderer.render({
 				template: template.slug as any,
 				config,
-				base_image: bgImagePath,   // first image as full background
+				base_image: bgImagePath,
 				format: 'PNG',
 				aspect_ratio: aspectRatio === 'auto' ? '4:5' : aspectRatio,
 			})
@@ -829,7 +820,6 @@ Note: Using AI-generated imagery.`)
 
 			return [url]
 		} finally {
-			// ── Step 4: Cleanup all downloaded images ────────────────────
 			for (const p of localPaths) this.cleanup(p)
 		}
 	}
@@ -854,7 +844,6 @@ Note: Using AI-generated imagery.`)
 
 		const layout = layoutMap[template.slug] || 'brush-script' as const
 
-		// For lifestyle-editorial: generate a short editorial tagline + description via AI
 		let lifestyleTagline = data.tagline
 		let lifestyleDesc = data.subheadline
 		if (template.slug === 'lifestyle-editorial') {
@@ -899,7 +888,6 @@ RULES:
 
 			let edited: Buffer
 
-			// Lifestyle Editorial: AI adds human FIRST on raw image, then overlay text on top
 			if (template.slug === 'lifestyle-editorial') {
 				console.log('>>> Lifestyle editorial: calling Flux Kontext Pro to add human traveler...')
 				const enhanced = await aiService.editImage({

@@ -17,8 +17,29 @@ export const env = Object.freeze({
 		accessExpiry: process.env.JWT_ACCESS_EXPIRY || '15m',
 		refreshExpiry: process.env.JWT_REFRESH_EXPIRY || '7d',
 	},
-	claude: {
-		apiKey: process.env.CLAUDE_API_KEY || '',
-		model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
+	openai: {
+		apiKey: process.env.OPENAI_API_KEY || '',
+		model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+	},
+	postforme: {
+		apiKey: process.env.POSTFORME_API_KEY || '',
+		baseUrl: process.env.POSTFORME_BASE_URL || 'https://api.postforme.dev',
+	},
+	cloudinary: {
+		cloudName: process.env.CLOUDINARY_CLOUD_NAME || '',
+		apiKey: process.env.CLOUDINARY_API_KEY || '',
+		apiSecret: process.env.CLOUDINARY_API_SECRET || '',
+	},
+	postforme_webhook: {
+		secret: process.env.POSTFORME_WEBHOOK_SECRET || '',
+	},
+	freepik: {
+		apiKey: process.env.FREEPIK_API_KEY || '',
+	},
+	fal: {
+		apiKey: process.env.FAL_API_KEY || '',
+	},
+	brand: {
+		logoUrl: process.env.BRAND_LOGO_URL || '',
 	},
 })

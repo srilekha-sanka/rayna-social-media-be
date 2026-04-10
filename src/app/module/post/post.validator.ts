@@ -1,74 +1,46 @@
-import { BadRequestError } from '../../errors/api-errors'
+import Joi from 'joi'
 
-const VALID_PLATFORMS = ['instagram', 'facebook', 'x', 'linkedin', 'tiktok', 'youtube', 'reddit', 'threads', 'snapchat', 'telegram']
-const VALID_STATUSES = ['DRAFT', 'PENDING_REVIEW', 'APPROVED', 'SCHEDULED', 'PUBLISHING', 'PUBLISHED', 'FAILED']
+const VALID_PLATFORMS = ['instagram', 'facebook', 'x', 'linkedin', 'tiktok', 'youtube', 'reddit', 'threads', 'snapchat', 'telegram'] as const
+const VALID_STATUSES = ['DRAFT', 'PENDING_REVIEW', 'APPROVED', 'SCHEDULED', 'PUBLISHING', 'PUBLISHED', 'FAILED'] as const
 
-interface CreatePostBody {
-	campaign_id?: string
-	base_content?: string
-	hashtags?: string[]
-	cta_text?: string
-	platforms?: string[]
-	media_urls?: string[]
-	scheduled_at?: string
-}
+export const createPostSchema = Joi.object({
+	calendar_entry_id: Joi.string().uuid().optional(),
+	campaign_id: Joi.string().uuid().optional(),
+	base_content: Joi.string().optional().trim(),
+	hashtags: Joi.array().items(Joi.string()).optional().default([]),
+	cta_text: Joi.string().optional().trim(),
+	platforms: Joi.array().items(Joi.string().lowercase().valid(...VALID_PLATFORMS)).optional().default([]),
+	social_account_ids: Joi.array().items(Joi.string().uuid()).optional().default([]),
+	media_urls: Joi.array().items(Joi.string()).optional().default([]),
+	scheduled_at: Joi.string().isoDate().optional(),
+})
 
-interface UpdatePostBody extends Partial<CreatePostBody> {
-	status?: string
-}
+export const updatePostSchema = Joi.object({
+	base_content: Joi.string().optional().trim(),
+	hashtags: Joi.array().items(Joi.string()).optional(),
+	cta_text: Joi.string().optional().trim(),
+	platforms: Joi.array().items(Joi.string().lowercase().valid(...VALID_PLATFORMS)).optional(),
+	social_account_ids: Joi.array().items(Joi.string().uuid()).optional(),
+	media_urls: Joi.array().items(Joi.string()).optional(),
+	status: Joi.string().valid(...VALID_STATUSES).optional(),
+	scheduled_at: Joi.string().isoDate().optional(),
+})
 
-export const validateCreatePost = (body: any): CreatePostBody => {
-	if (body.platforms && !Array.isArray(body.platforms)) {
-		throw new BadRequestError('platforms must be an array')
-	}
+export const publishPostSchema = Joi.object({
+	social_account_ids: Joi.array().items(Joi.string().uuid()).min(1).required()
+		.messages({ 'array.min': 'You must select at least one social account to publish to.' }),
+})
 
-	if (body.platforms) {
-		const invalid = body.platforms.filter((p: string) => !VALID_PLATFORMS.includes(p.toLowerCase()))
-		if (invalid.length > 0) {
-			throw new BadRequestError(`Invalid platforms: ${invalid.join(', ')}. Valid: ${VALID_PLATFORMS.join(', ')}`)
-		}
-	}
+export const schedulePostSchema = Joi.object({
+	scheduled_at: Joi.string().isoDate().required(),
+	social_account_ids: Joi.array().items(Joi.string().uuid()).min(1).required()
+		.messages({ 'array.min': 'You must select at least one social account to schedule to.' }),
+})
 
-	if (body.media_urls && !Array.isArray(body.media_urls)) {
-		throw new BadRequestError('media_urls must be an array')
-	}
+export const rejectPostSchema = Joi.object({
+	reason: Joi.string().required().trim(),
+})
 
-	if (body.hashtags && !Array.isArray(body.hashtags)) {
-		throw new BadRequestError('hashtags must be an array')
-	}
-
-	return {
-		campaign_id: body.campaign_id,
-		base_content: body.base_content?.trim(),
-		hashtags: body.hashtags || [],
-		cta_text: body.cta_text?.trim(),
-		platforms: body.platforms?.map((p: string) => p.toLowerCase()) || [],
-		media_urls: body.media_urls || [],
-		scheduled_at: body.scheduled_at,
-	}
-}
-
-export const validateUpdatePost = (body: any): UpdatePostBody => {
-	if (body.status && !VALID_STATUSES.includes(body.status)) {
-		throw new BadRequestError(`status must be one of: ${VALID_STATUSES.join(', ')}`)
-	}
-
-	if (body.platforms) {
-		const invalid = body.platforms.filter((p: string) => !VALID_PLATFORMS.includes(p.toLowerCase()))
-		if (invalid.length > 0) {
-			throw new BadRequestError(`Invalid platforms: ${invalid.join(', ')}`)
-		}
-	}
-
-	const update: UpdatePostBody = {}
-
-	if (body.base_content !== undefined) update.base_content = body.base_content?.trim()
-	if (body.hashtags !== undefined) update.hashtags = body.hashtags
-	if (body.cta_text !== undefined) update.cta_text = body.cta_text?.trim()
-	if (body.platforms !== undefined) update.platforms = body.platforms.map((p: string) => p.toLowerCase())
-	if (body.media_urls !== undefined) update.media_urls = body.media_urls
-	if (body.status !== undefined) update.status = body.status
-	if (body.scheduled_at !== undefined) update.scheduled_at = body.scheduled_at
-
-	return update
-}
+export const approvePostSchema = Joi.object({
+	note: Joi.string().optional().allow('', null).trim(),
+})

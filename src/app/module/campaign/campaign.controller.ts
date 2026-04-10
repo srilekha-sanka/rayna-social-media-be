@@ -1,7 +1,8 @@
 import { Request, Response, NextFunction } from 'express'
 import { campaignService } from './campaign.service'
-import { validateCreateCampaign, validateUpdateCampaign } from './campaign.validator'
+import { createCampaignSchema, updateCampaignSchema } from './campaign.validator'
 import ResponseService from '../../utils/response.service'
+import { BadRequestError } from '../../errors/api-errors'
 
 class CampaignController extends ResponseService {
 	constructor() {
@@ -10,9 +11,11 @@ class CampaignController extends ResponseService {
 
 	create = async (req: Request, res: Response, next: NextFunction) => {
 		try {
-			const validated = validateCreateCampaign(req.body)
+			const { error, value } = createCampaignSchema.validate(req.body, { abortEarly: false, stripUnknown: true })
+			if (error) throw new BadRequestError(error.details.map((d) => d.message).join(', '))
+
 			const userId = req.user.userId
-			const { statusCode, payload, message } = await campaignService.create(validated, userId)
+			const { statusCode, payload, message } = await campaignService.create(value, userId)
 			return this.sendResponse(res, statusCode, payload, message)
 		} catch (err) {
 			next(err)
@@ -45,8 +48,10 @@ class CampaignController extends ResponseService {
 
 	update = async (req: Request, res: Response, next: NextFunction) => {
 		try {
-			const validated = validateUpdateCampaign(req.body)
-			const { statusCode, payload, message } = await campaignService.update(req.params.id, validated as any)
+			const { error, value } = updateCampaignSchema.validate(req.body, { abortEarly: false, stripUnknown: true })
+			if (error) throw new BadRequestError(error.details.map((d) => d.message).join(', '))
+
+			const { statusCode, payload, message } = await campaignService.update(req.params.id, value as any)
 			return this.sendResponse(res, statusCode, payload, message)
 		} catch (err) {
 			next(err)

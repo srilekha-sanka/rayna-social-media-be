@@ -5,7 +5,7 @@ import { BaseAttributes, BaseModelType } from '../../interfaces/BaseAttributes'
 import Product from '../product/product.model'
 
 type MediaType = 'IMAGE' | 'VIDEO' | 'AUDIO'
-type MediaSource = 'UPLOADED' | 'AI_GENERATED' | 'PRODUCT_FETCH' | 'OVERLAY'
+type MediaSource = 'UPLOADED' | 'AI_GENERATED' | 'PRODUCT_FETCH' | 'OVERLAY' | 'CLOUDINARY'
 
 interface MediaAssetAttributes extends BaseAttributes {
 	id: string
@@ -17,10 +17,12 @@ interface MediaAssetAttributes extends BaseAttributes {
 	mime_type: string | null
 	dimensions: { width: number; height: number } | null
 	product_id: string | null
+	public_id: string | null
+	secure_url: string | null
 }
 
 interface MediaAssetCreationAttributes
-	extends Optional<MediaAssetAttributes, BaseModelType | 'file_size' | 'mime_type' | 'dimensions' | 'product_id'> {}
+	extends Optional<MediaAssetAttributes, BaseModelType | 'file_size' | 'mime_type' | 'dimensions' | 'product_id' | 'public_id' | 'secure_url'> {}
 
 @Table({
 	tableName: 'media_assets',
@@ -35,7 +37,7 @@ class MediaAsset extends BaseModel<MediaAssetAttributes, MediaAssetCreationAttri
 	type!: MediaType
 
 	@Column({
-		type: DataType.ENUM('UPLOADED', 'AI_GENERATED', 'PRODUCT_FETCH', 'OVERLAY'),
+		type: DataType.ENUM('UPLOADED', 'AI_GENERATED', 'PRODUCT_FETCH', 'OVERLAY', 'CLOUDINARY'),
 		allowNull: false,
 		defaultValue: 'UPLOADED',
 	})
@@ -80,6 +82,18 @@ class MediaAsset extends BaseModel<MediaAssetAttributes, MediaAssetCreationAttri
 
 	@BelongsTo(() => Product)
 	product!: Product
+
+	@Column({
+		type: DataType.STRING(500),
+		allowNull: true,
+	})
+	public_id?: string
+
+	@Column({
+		type: DataType.STRING(1000),
+		allowNull: true,
+	})
+	secure_url?: string
 }
 
 export default MediaAsset
