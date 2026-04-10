@@ -1,31 +1,25 @@
 """
 Template: Minimal CTA Banner
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Clean, full-bleed background with a large headline, optional subheadline,
-and a prominent call-to-action button at the bottom.
+Clean full-bleed image with gentle bottom gradient, large headline,
+price line, and a prominent CTA button. Minimal and elegant.
 
 Config keys:
-    headline        – "Desert Safari"
-    subheadline     – "Experience the thrill of the golden dunes"
+    headline        – "Sky Views Experience"
+    subheadline     – "Starting from AED 80.00/-"
     cta_text        – "Book Now"
     logo_path       – brand logo file
     accent_color    – CTA button color (default orange)
-    headline_font   – "montserrat" | "playfair" | "bebas" (default montserrat)
-    headline_position – "bottom" | "center" | "top" (default bottom)
-    gradient_intensity – 0.0–1.0 (default 0.6)
-    vignette        – true/false (default true)
     tc_text         – "*T&C apply"
-    coupon_code     – optional coupon code
-    coupon_label    – "Use Code:"
 """
 from __future__ import annotations
 
 from typing import Optional
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 
-from engine.core import BaseTemplate, Dimensions, INSTAGRAM, WHITE, BLACK
-from engine.text import TextRenderer, ShadowCfg, OutlineCfg
+from engine.core import BaseTemplate, Dimensions, INSTAGRAM, WHITE, BLACK, FontRegistry
+from engine.text import TextRenderer, ShadowCfg
 from engine.effects import Effects
 from engine.components import Components
 
@@ -34,7 +28,7 @@ ORANGE = (234, 88, 12)
 
 
 class MinimalCTATemplate(BaseTemplate):
-    """Full-bleed image + large headline + CTA button."""
+    """Clean full-bleed image + headline + CTA button."""
 
     def __init__(self, dims: Dimensions = INSTAGRAM["4:5"]) -> None:
         super().__init__(dims)
@@ -47,13 +41,7 @@ class MinimalCTATemplate(BaseTemplate):
         cta_text = config.get("cta_text", "Book Now")
         logo_path = config.get("logo_path", "")
         accent = _parse_color(config.get("accent_color"), ORANGE)
-        h_font_name = config.get("headline_font", "montserrat")
-        h_pos = config.get("headline_position", "bottom")
-        grad_intensity = config.get("gradient_intensity", 0.6)
-        use_vignette = config.get("vignette", True)
         tc_text = config.get("tc_text", "*T&C apply")
-        coupon_code = config.get("coupon_code", "")
-        coupon_label = config.get("coupon_label", "Use Code:")
 
         # ── Background ───────────────────────────────────────────────
         if base_image:
@@ -63,111 +51,73 @@ class MinimalCTATemplate(BaseTemplate):
                 self.w, self.h, (40, 60, 90), (20, 30, 50), "vertical"
             )
 
-        # Vignette
-        if use_vignette:
-            canvas = Effects.vignette_fast(canvas, intensity=0.3)
-
-        # Gradient overlay based on position
-        grad_alpha = round(255 * grad_intensity)
-        if h_pos == "bottom":
-            canvas = Effects.gradient_overlay(
-                canvas,
-                start=(0, 0, 0, grad_alpha),
-                end=(0, 0, 0, 0),
-                direction="bottom_up",
-                coverage=0.55,
-            )
-        elif h_pos == "top":
-            canvas = Effects.gradient_overlay(
-                canvas,
-                start=(0, 0, 0, grad_alpha),
-                end=(0, 0, 0, 0),
-                direction="top_down",
-                coverage=0.55,
-            )
-        else:  # center
-            canvas = Effects.multi_gradient_overlay(canvas, [
-                {"start": (0, 0, 0, round(grad_alpha * 0.5)), "end": (0, 0, 0, 0), "direction": "bottom_up", "coverage": 0.4},
-                {"start": (0, 0, 0, round(grad_alpha * 0.5)), "end": (0, 0, 0, 0), "direction": "top_down", "coverage": 0.4},
-            ])
+        # Gentle bottom gradient only — let the image breathe
+        canvas = Effects.gradient_overlay(
+            canvas,
+            start=(0, 0, 0, 200),
+            end=(0, 0, 0, 0),
+            direction="bottom_up",
+            coverage=0.50,
+        )
 
         center_x = self.w // 2
-        shadow = ShadowCfg(offset=(3, 3), blur=10, color=(0, 0, 0, 160))
+        shadow = ShadowCfg(offset=(2, 3), blur=8, color=(0, 0, 0, 180))
 
-        # ── Logo (centered top) ──────────────────────────────────────
+        # ── Logo (top-left) ──────────────────────────────────────────
         if logo_path:
-            Components.place_logo_centered(
+            Components.place_logo(
                 canvas, logo_path,
-                y=self.px(0.03, "h"),
+                position=(self.px(0.04), self.px(0.025, "h")),
                 max_height=self.px(0.04, "h"),
+                max_width=self.px(0.15),
             )
 
-        # ── Content positioning ──────────────────────────────────────
-        if h_pos == "bottom":
-            text_anchor_y = self.px(0.65, "h")
-        elif h_pos == "top":
-            text_anchor_y = self.px(0.12, "h")
-        else:
-            text_anchor_y = self.px(0.35, "h")
+        # ── Content anchored at bottom ───────────────────────────────
+        bottom_pad = self.px(0.05, "h")
+        content_y = self.h - bottom_pad
 
-        # ── Headline ─────────────────────────────────────────────────
-        max_w = self.px(0.85)
-        # Use bold variant if available
-        bold_font = h_font_name
-        if h_font_name == "montserrat":
-            bold_font = "montserrat-black"
+        # T&C (very bottom)
+        tc_font = FontRegistry.get("montserrat", 14)
+        tw, th = TextRenderer.measure(tc_text, tc_font)
+        content_y -= th
+        TextRenderer.draw(
+            canvas, (center_x, content_y), tc_text,
+            tc_font, color=(255, 255, 255, 140), anchor="mt",
+        )
+        content_y -= 24
+
+        # CTA button
+        if cta_text:
+            btn_h = 56
+            content_y -= btn_h
+            self._draw_cta_button(canvas, center_x, content_y, cta_text, accent, btn_h)
+            content_y -= 24
+
+        # Subheadline (price line)
+        if subheadline:
+            sub_font = self.font("montserrat-semibold", 32)
+            TextRenderer.draw(
+                canvas, (center_x, content_y), subheadline,
+                sub_font, color=(255, 255, 255, 230), anchor="mb",
+                shadow=ShadowCfg(offset=(1, 2), blur=4, color=(0, 0, 0, 120)),
+            )
+            _, sh = TextRenderer.measure(subheadline, sub_font)
+            content_y -= sh + 16
+
+        # Headline (large, bold)
+        max_w = self.px(0.88)
         h_font = TextRenderer.fit_font_size(
-            headline, bold_font, max_w, max_size=120, min_size=44
+            headline, "montserrat-black", max_w,
+            max_size=100, min_size=44,
         )
         wrapped = TextRenderer.word_wrap(headline, h_font, max_w)
+        _, hh = TextRenderer.measure_multiline(wrapped, h_font, 10)
+        content_y -= hh
         TextRenderer.draw_multiline(
-            canvas, (center_x, text_anchor_y), wrapped,
+            canvas, (center_x, content_y), wrapped,
             h_font, color=WHITE, spacing=10, align="center", anchor="ma",
             shadow=shadow,
         )
-        _, hh = TextRenderer.measure_multiline(wrapped, h_font, 10)
-        content_y = text_anchor_y + hh // 2 + 20
-
-        # ── Subheadline ──────────────────────────────────────────────
-        if subheadline:
-            sub_font = self.font("montserrat-medium", 30)
-            sub_wrapped = TextRenderer.word_wrap(subheadline, sub_font, max_w)
-            TextRenderer.draw_multiline(
-                canvas, (center_x, content_y), sub_wrapped,
-                sub_font, color=(220, 220, 220), spacing=6, align="center",
-                anchor="ma", shadow=ShadowCfg(offset=(2, 2), blur=4, color=(0, 0, 0, 100)),
-            )
-            _, sh = TextRenderer.measure_multiline(sub_wrapped, sub_font, 6)
-            content_y += sh // 2 + 25
-
-        # ── CTA button ───────────────────────────────────────────────
-        if cta_text:
-            self._draw_cta_button(canvas, center_x, content_y, cta_text, accent)
-            content_y += 70
-
-        # ── Coupon badge (optional) ──────────────────────────────────
-        if coupon_code:
-            from engine.core import FontRegistry
-            lf = FontRegistry.get("montserrat", 24)
-            cf = FontRegistry.get("montserrat", 26)
-            lw, _ = TextRenderer.measure(coupon_label, lf)
-            cw, _ = TextRenderer.measure(coupon_code, cf)
-            pad_x = round(44 * 0.45)
-            total_w = (lw + pad_x * 2) + (cw + pad_x * 2)
-            badge_x = center_x - total_w // 2
-
-            Components.coupon_badge(
-                canvas,
-                position=(badge_x, content_y),
-                code=coupon_code,
-                label=coupon_label,
-                label_bg=accent,
-                font_size=24,
-                height=44,
-            )
-
-        # ── T&C ──────────────────────────────────────────────────────
-        Components.tc_text(canvas, tc_text, color=(255, 255, 255, 150))
 
         return canvas
 
@@ -178,44 +128,41 @@ class MinimalCTATemplate(BaseTemplate):
         cy: int,
         text: str,
         bg_color,
+        btn_h: int = 56,
     ) -> None:
-        """Draw a rounded CTA button centered at (cx, cy)."""
-        btn_font = self.font("montserrat-bold", 28)
+        """Draw a clean rounded CTA button centered at (cx, cy)."""
+        btn_font = FontRegistry.get("montserrat-bold", 26)
         tw, th = TextRenderer.measure(text, btn_font)
 
-        pad_x = 50
-        pad_y = 16
+        pad_x = 52
         btn_w = tw + pad_x * 2
-        btn_h = th + pad_y * 2
         bx = cx - btn_w // 2
-        by = cy
 
-        # Button shadow
-        shadow_layer = Image.new("RGBA", (btn_w + 40, btn_h + 40), (0, 0, 0, 0))
+        # Subtle shadow
+        shadow_layer = Image.new("RGBA", (btn_w + 30, btn_h + 30), (0, 0, 0, 0))
         sd = ImageDraw.Draw(shadow_layer)
         sd.rounded_rectangle(
-            [20, 20, 20 + btn_w, 20 + btn_h],
+            [15, 15, 15 + btn_w, 15 + btn_h],
             radius=btn_h // 2,
-            fill=(0, 0, 0, 60),
+            fill=(0, 0, 0, 50),
         )
-        from PIL import ImageFilter
-        shadow_layer = shadow_layer.filter(ImageFilter.GaussianBlur(8))
-        canvas.alpha_composite(shadow_layer, (bx - 20, by - 16))
+        shadow_layer = shadow_layer.filter(ImageFilter.GaussianBlur(6))
+        canvas.alpha_composite(shadow_layer, (bx - 15, cy - 12))
 
-        # Button background
+        # Button
         draw = ImageDraw.Draw(canvas)
         bc = bg_color + (255,) if len(bg_color) == 3 else bg_color
         draw.rounded_rectangle(
-            [bx, by, bx + btn_w, by + btn_h],
+            [bx, cy, bx + btn_w, cy + btn_h],
             radius=btn_h // 2,
             fill=bc,
         )
 
-        # Button text
+        # Text centered in button
+        text_y = cy + (btn_h - th) // 2
         draw.text(
-            (cx, by + pad_y),
-            text,
-            fill=WHITE,
+            (cx, text_y), text,
+            fill=(255, 255, 255, 255),
             font=btn_font,
             anchor="mt",
         )

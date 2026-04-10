@@ -22,6 +22,11 @@ from pathlib import Path
 # Add parent to path so we can import the engine
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+try:
+    import pillow_avif  # noqa: F401 — enables AVIF support in Pillow
+except ImportError:
+    pass
+
 from templates.registry import TemplateRegistry
 from engine.core import INSTAGRAM
 

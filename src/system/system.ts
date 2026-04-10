@@ -12,7 +12,7 @@ import dbConnSeq from '../db/config/database.config'
 import { errorHandler } from '../app/middlewares/commonErrorHandler'
 import routes from '../app/routes'
 import { seedProducts } from '../db/seeds/product.seed'
-import { reseedDesignTemplates } from '../db/seeds/design-template.seed'
+import { seedDesignTemplates } from '../db/seeds/design-template.seed'
 
 let routingUrl = '/api/v1'
 
@@ -50,7 +50,7 @@ export class System {
 				.then(async () => {
 					logger.info('📁[DB]: Database is connected and synced.')
 					await seedProducts()
-					// await reseedDesignTemplates()  // ONE-TIME: seeds 5 HTML + 5 Python templates with renderer field
+					await seedDesignTemplates()
 					const port: number = process.env.PORT ? +process.env.PORT : 3000
 					app.listen(port, async () => {
 						logger.info('----------------------------------------------------------')

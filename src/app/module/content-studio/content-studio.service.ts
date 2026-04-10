@@ -250,7 +250,7 @@ RESPOND WITH VALID JSON ONLY:
 				entry.product = await Product.findByPk(entry.product_id) as Product
 			}
 			if (entry.product?.image_urls?.length) {
-				mediaUrls = entry.product.image_urls.slice(0, data?.num_images || 1)
+				mediaUrls = entry.product.image_urls.slice(0, numImages)
 			}
 		} else if (contentSource === 'STOCK') {
 			if (data?.stock_image_urls?.length) {
