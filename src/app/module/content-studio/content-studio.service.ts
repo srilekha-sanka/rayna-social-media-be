@@ -1402,7 +1402,7 @@ Platform: ${entry.platform} | Format: ${entry.post_type} | Type: ${entry.content
 		const templates = await DesignTemplate.findAll({
 			where,
 			order: [['sort_order', 'ASC']],
-			attributes: ['id', 'name', 'slug', 'description', 'media_type', 'thumbnail_url', 'sort_order'],
+			attributes: ['id', 'name', 'slug', 'description', 'media_type', 'renderer', 'thumbnail_url', 'sort_order'],
 		})
 
 		return { statusCode: 200, payload: { templates }, message: 'Design templates retrieved' }
