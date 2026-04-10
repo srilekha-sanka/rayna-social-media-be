@@ -2,10 +2,11 @@ import DesignTemplate from '../../app/module/content-studio/design-template.mode
 import { logger } from '../../app/common/logger/logging'
 
 const DESIGN_TEMPLATES = [
-	// ─── 1. Explorer Minimal ────────────────────────────────────
+	// ─── 1. Explorer Minimal (HTML) ────────────────────────────────────
 	{
 		name: 'Explorer Minimal',
 		slug: 'explorer-minimal',
+		renderer: 'html' as const,
 		description: 'Bold cinematic travel ad with script+sans combo headline, yellow accent banner, split contact footer',
 		media_type: 'image' as const,
 		prompt_config: {
@@ -98,10 +99,11 @@ Generate a bold, high-converting Instagram travel poster with:
 		sort_order: 1,
 	},
 
-	// ─── 2. Lifestyle Editorial ─────────────────────────────────
+	// ─── 2. Lifestyle Editorial (HTML) ─────────────────────────────────
 	{
 		name: 'Lifestyle Editorial',
 		slug: 'lifestyle-editorial',
+		renderer: 'html' as const,
 		description: 'Emotional storytelling with CTA button, human element, editorial magazine feel',
 		media_type: 'image' as const,
 		prompt_config: {
@@ -181,10 +183,11 @@ Generate a polished, high-end Instagram travel ad poster with balanced layout, c
 		sort_order: 2,
 	},
 
-	// ─── 3. Bold Adventure ──────────────────────────────────────
+	// ─── 3. Bold Adventure (HTML) ──────────────────────────────────────
 	{
 		name: 'Bold Adventure',
 		slug: 'bold-adventure',
+		renderer: 'html' as const,
 		description: 'Bold adventure trek poster, script headline, accent-colored includes, pill-style footer',
 		media_type: 'image' as const,
 		prompt_config: {
@@ -294,10 +297,11 @@ Generate a bold, clean, adventure-style trek poster with:
 		sort_order: 3,
 	},
 
-	// ─── 4. Heritage Cinematic ──────────────────────────────────
+	// ─── 4. Heritage Cinematic (HTML) ──────────────────────────────────
 	{
 		name: 'Heritage Cinematic',
 		slug: 'heritage-cinematic',
+		renderer: 'html' as const,
 		description: 'Cinematic cultural poster with calligraphy headline, serif title, split bottom layout, timeless elegance',
 		media_type: 'image' as const,
 		prompt_config: {
@@ -409,10 +413,11 @@ Generate a premium, cinematic, heritage-style travel poster with:
 		sort_order: 4,
 	},
 
-	// ─── 5. Brush Script Escape ─────────────────────────────────
+	// ─── 5. Brush Script Escape (HTML) ─────────────────────────────────
 	{
 		name: 'Brush Script Escape',
 		slug: 'brush-script-escape',
+		renderer: 'html' as const,
 		description: 'Bold brush/script hero text, structured info blocks, adventure-clean style with strict reusable layout',
 		media_type: 'image' as const,
 		prompt_config: {
@@ -538,6 +543,80 @@ Generate a bold, clean, premium Instagram travel poster with:
 			dynamic_fields: ['destination', 'headline', 'price', 'includes', 'dates', 'contact', 'brand_name'],
 		},
 		sort_order: 5,
+	},
+
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	// PYTHON + PILLOW TEMPLATES (Advanced image compositing)
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+	// ─── 6. Promo Collage (Python) ─────────────────────────────
+	{
+		name: 'Promo Collage',
+		slug: 'promo-collage',
+		renderer: 'python' as const,
+		description: 'Promotional offer banner with polaroid-style photo collage, coupon badge, gradient or striped background. Ideal for discount campaigns.',
+		media_type: 'image' as const,
+		prompt_config: {
+			design_prompt: 'Python/Pillow template: promotional banner with coupon code badge and polaroid photo collage. Supports gradient, striped, or image backgrounds.',
+			dynamic_fields: ['headline', 'subheadline', 'coupon_code', 'coupon_label', 'photos', 'accent_color', 'bg_type'],
+		},
+		sort_order: 6,
+	},
+
+	// ─── 7. Hotel Feature (Python) ─────────────────────────────
+	{
+		name: 'Hotel Feature',
+		slug: 'hotel-feature',
+		renderer: 'python' as const,
+		description: 'Full-bleed background image with large headline, coupon badge, and bottom feature bar with icon columns. Great for hotel/stay offers.',
+		media_type: 'image' as const,
+		prompt_config: {
+			design_prompt: 'Python/Pillow template: full-bleed background with gradient overlay, multi-line headline, coupon badge, and bottom feature bar with USP columns.',
+			dynamic_fields: ['pre_headline', 'headline', 'subheadline', 'coupon_code', 'accent_color', 'features'],
+		},
+		sort_order: 7,
+	},
+
+	// ─── 8. Phone Mockup (Python) ──────────────────────────────
+	{
+		name: 'Phone Mockup',
+		slug: 'phone-mockup',
+		renderer: 'python' as const,
+		description: 'Scenic background with a phone mockup showing a travel image, bold headline, and accent bars. Perfect for re-engagement and app promotion.',
+		media_type: 'image' as const,
+		prompt_config: {
+			design_prompt: 'Python/Pillow template: scenic background with phone device mockup, bold headline, subheadline, and colored accent bars.',
+			dynamic_fields: ['headline', 'subheadline', 'phone_image', 'accent_bars'],
+		},
+		sort_order: 8,
+	},
+
+	// ─── 9. Photo Board (Python) ───────────────────────────────
+	{
+		name: 'Photo Board',
+		slug: 'photo-board',
+		renderer: 'python' as const,
+		description: 'Textured background (wood planks or stripes) with scattered polaroid photos, offer headline, and coupon badge. Magazine-style layout.',
+		media_type: 'image' as const,
+		prompt_config: {
+			design_prompt: 'Python/Pillow template: wood or striped texture background with scattered polaroid-framed photos, offer headline, accent bars, and coupon badge.',
+			dynamic_fields: ['headline', 'subheadline', 'coupon_code', 'photos', 'accent_color', 'bg_texture'],
+		},
+		sort_order: 9,
+	},
+
+	// ─── 10. Minimal CTA (Python) ──────────────────────────────
+	{
+		name: 'Minimal CTA',
+		slug: 'minimal-cta',
+		renderer: 'python' as const,
+		description: 'Clean full-bleed background with vignette, large headline, CTA button, and optional coupon badge. Versatile for any promotion.',
+		media_type: 'image' as const,
+		prompt_config: {
+			design_prompt: 'Python/Pillow template: full-bleed image with vignette and gradient overlay, large bold headline, rounded CTA button, and optional coupon badge.',
+			dynamic_fields: ['headline', 'subheadline', 'cta_text', 'coupon_code', 'accent_color', 'headline_position'],
+		},
+		sort_order: 10,
 	},
 ]
 

@@ -4,6 +4,7 @@ import BaseModel from '../../utils/base.model'
 import { BaseAttributes, BaseModelType } from '../../interfaces/BaseAttributes'
 
 export type MediaType = 'image' | 'video'
+export type RendererType = 'html' | 'python'
 
 export interface PromptConfig {
 	design_prompt: string
@@ -16,13 +17,14 @@ interface DesignTemplateAttributes extends BaseAttributes {
 	slug: string
 	description: string
 	media_type: MediaType
+	renderer: RendererType
 	thumbnail_url: string | null
 	prompt_config: PromptConfig
 	sort_order: number
 }
 
 interface DesignTemplateCreationAttributes
-	extends Optional<DesignTemplateAttributes, BaseModelType | 'media_type' | 'thumbnail_url' | 'sort_order'> {}
+	extends Optional<DesignTemplateAttributes, BaseModelType | 'media_type' | 'renderer' | 'thumbnail_url' | 'sort_order'> {}
 
 @Table({
 	tableName: 'design_templates',
@@ -55,6 +57,13 @@ class DesignTemplate extends BaseModel<DesignTemplateAttributes, DesignTemplateC
 		defaultValue: 'image',
 	})
 	media_type!: MediaType
+
+	@Column({
+		type: DataType.ENUM('html', 'python'),
+		allowNull: false,
+		defaultValue: 'html',
+	})
+	renderer!: RendererType
 
 	@Column({
 		type: DataType.STRING(500),

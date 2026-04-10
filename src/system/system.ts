@@ -13,7 +13,6 @@ import { errorHandler } from '../app/middlewares/commonErrorHandler'
 import routes from '../app/routes'
 import { seedProducts } from '../db/seeds/product.seed'
 import { reseedDesignTemplates } from '../db/seeds/design-template.seed'
-import { postScheduler } from '../app/scheduler/post-scheduler'
 
 let routingUrl = '/api/v1'
 
@@ -51,14 +50,13 @@ export class System {
 				.then(async () => {
 					logger.info('📁[DB]: Database is connected and synced.')
 					await seedProducts()
-					// await reseedDesignTemplates()
+					// await reseedDesignTemplates()  // ONE-TIME: seeds 5 HTML + 5 Python templates with renderer field
 					const port: number = process.env.PORT ? +process.env.PORT : 3000
 					app.listen(port, async () => {
 						logger.info('----------------------------------------------------------')
 						logger.info(`⚡️[server]: Server is running on ${port}`)
 						logger.info('Time : ' + new Date())
 						logger.info('----------------------------------------------------------')
-						postScheduler.start()
 					})
 				})
 				.catch((err) => {
