@@ -48,7 +48,12 @@ export class System {
 				.sync({ alter: true, logging: false })
 				.then(async () => {
 					logger.info('📁[DB]: Database is connected and synced.')
+<<<<<<< Updated upstream
 					await seedProducts()
+=======
+					// await seedProducts()
+					// await reseedDesignTemplates()
+>>>>>>> Stashed changes
 					const port: number = process.env.PORT ? +process.env.PORT : 3000
 					app.listen(port, async () => {
 						logger.info('----------------------------------------------------------')
