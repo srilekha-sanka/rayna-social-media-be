@@ -10,7 +10,6 @@ import { IServiceResponse } from '../../interfaces/IServiceResponse'
 import { NotFoundError, BadRequestError } from '../../errors/api-errors'
 import { aiService } from '../ai/ai.service'
 import { contentService } from '../content/content.service'
-import { logger } from '../../common/logger/logging'
 
 // --- Types ---
 
@@ -106,7 +105,7 @@ class ContentStudioService {
 		const jobId = `plan-${plan.id}-${Date.now()}`
 		jobStore.set(jobId, { status: 'PROCESSING', started_at: new Date(), progress: { completed: 0, total: 0 } })
 
-		this.processGeneratePlan(jobId, plan.id, input, products, userId).catch((err) => {
+		this.processGeneratePlan(jobId, plan.id, input, products).catch((err) => {
 			jobStore.set(jobId, { status: 'FAILED', error: err.message, started_at: jobStore.get(jobId)!.started_at, completed_at: new Date() })
 		})
 
@@ -127,7 +126,7 @@ class ContentStudioService {
 		const jobId = `fill-${planId}-${Date.now()}`
 		jobStore.set(jobId, { status: 'PROCESSING', started_at: new Date(), progress: { completed: 0, total: 0 } })
 
-		this.processGenerateEntries(jobId, plan, input, products, userId).catch((err) => {
+		this.processGenerateEntries(jobId, plan, input, products).catch((err) => {
 			jobStore.set(jobId, { status: 'FAILED', error: err.message, started_at: jobStore.get(jobId)!.started_at, completed_at: new Date() })
 		})
 
@@ -176,81 +175,23 @@ class ContentStudioService {
 	) {
 		let mediaUrls: string[] = data?.media_urls || []
 
-		// --- Step 1: Initialize Content State & Generate "WOW" Copy ---
-		let aiCaption = data?.base_content || undefined
-		let aiHashtags = data?.hashtags || []
-		let aiCta = data?.cta_text || undefined
-		let posterData: Record<string, string> | undefined = undefined
-
-		const dynamicFields = template.prompt_config?.dynamic_fields || []
-		if (!aiCaption && dynamicFields.length > 0) {
-			const activeTone = (entry.content_plan?.generation_config as any)?.tone || 'Luxury Aspirational'
-			const activeGoal = (entry.content_plan?.generation_config as any)?.primary_goal || 'Emotional Conversion'
-			const systemPrompt = `You are a legendary Creative Director for a top-tier luxury travel magazine.
-Your task is to generate scroll-stopping, "WOW" factor copy for a visual travel poster and its caption.
-
-REQUIRED POSTER FIELDS:
-${dynamicFields.join(', ')}
-
-RESPOND WITH VALID JSON ONLY:
-{
-  "poster": {
-    ${dynamicFields.map((f) => `"${f}": "..."`).join(',\n    ')}
-  },
-  "caption": "the full post caption",
-  "hashtags": ["hashtag1", "hashtag2"],
-  "cta_text": "call to action"
-}
-
-CRITICAL RULES FOR "WOW" POSTER TEXT:
-- NEVER describe the image in text (e.g. Do NOT write "Image of the Dubai Frame"). 
-- THE HEADLINE: Must be a "Magnetic Hook" (max 25 chars). Use strong verbs and emotional nouns. (e.g., "TOUCH THE SKY", "WHERE DREAMS LAND", "ETERNAL GOLD").
-- SUBHEADLINE: Must be an emotional invitation (max 40 chars). (e.g., "A gateway to future wonders").
-- TAGLINE: Must be poetic and atmospheric (max 25 chars).
-- Avoid literal facts. Focus on the FEELING of being there.
-- Tone: ${activeTone}. Goal: ${activeGoal}.`
-
-			const userPrompt = `Create a viral "WOW" travel campaign for:
-Title: ${entry.title}
-Brief: ${entry.description || 'Premium travel experience'}
-Product: ${entry.product ? `${entry.product.name} (Value: ${entry.product.currency} ${entry.product.price})` : 'Rayna Tours Signature Event'}
-Platform: ${entry.platform} | Aesthetic: ${template.name}`
-
-			try {
-				const aiResponse = await aiService.callOpenAIRaw<any>(systemPrompt, userPrompt)
-				posterData = aiResponse.poster || {}
-				aiCaption = aiResponse.caption
-				aiHashtags = aiResponse.hashtags || []
-				aiCta = aiResponse.cta_text
-
-				// Text Constraint Engine
-				if (posterData?.headline && posterData.headline.length > 40) posterData.headline = posterData.headline.substring(0, 40)
-				if (posterData?.subheadline && posterData.subheadline.length > 80) posterData.subheadline = posterData.subheadline.substring(0, 80)
-			} catch (err: any) {
-				logger.error('Failed to generate template-aligned content: ' + err.message)
-			}
-		}
-
-		if (!aiCaption) {
-			try {
-				const captionResult = await aiService.callOpenAIRaw<{ caption: string; hashtags: string[]; cta_text: string }>(`You are a social media copywriter for Rayna Tours.
-RESPOND WITH VALID JSON ONLY:
-{"caption":"the full post caption","hashtags":["holiday","travel"],"cta_text":"Book now"}`, `Title: ${entry.title}`)
-				aiCaption = captionResult.caption
-				if (!aiHashtags.length) aiHashtags = captionResult.hashtags
-				if (!aiCta) aiCta = captionResult.cta_text
-			} catch (err) {
-				aiCaption = entry.description || entry.title
-			}
-		}
-
-		// --- Step 2: Get base images from the chosen source ---
+		// Step 1: Get base images from the chosen source
 		if (contentSource === 'PRODUCT') {
+			const genConfig = entry.content_plan?.generation_config as { product_ids?: string[] } | null
+			if (!entry.product_id && genConfig?.product_ids?.length) {
+				const productIds = genConfig.product_ids
+				const product = await Product.findOne({ where: { id: { [Op.in]: productIds }, is_active: true } })
+				if (product) {
+					await entry.update({ product_id: product.id })
+					entry.product_id = product.id
+					entry.product = product
+				}
+			}
 			if (entry.product_id && (!entry.product || !entry.product.image_urls)) {
 				entry.product = await Product.findByPk(entry.product_id) as Product
 			}
 			if (entry.product?.image_urls?.length) {
-				mediaUrls = entry.product.image_urls.slice(0, numImages)
+				mediaUrls = entry.product.image_urls.slice(0, data?.num_images || 1)
 			}
 		} else if (contentSource === 'STOCK') {
 			if (data?.stock_image_urls?.length) {
@@ -260,63 +201,79 @@ RESPOND WITH VALID JSON ONLY:
 			if (entry.product_id && (!entry.product || !entry.product.image_urls)) {
 				entry.product = await Product.findByPk(entry.product_id) as Product
 			}
-
-			logger.info(`[AI_GENERATED] Generating fresh portrait + landscape images using headline: "${posterData?.headline}"`)
-
-			const [portraitResult, landscapeResult] = await Promise.all([
-				contentService.processAIGeneratedMedia({
-					entry,
-					product: entry.product || undefined,
-					style: (data?.ai_image_style as any) || 'photo',
-					additional_prompt: data?.ai_image_prompt,
-					num_images: 1,
-					apply_overlay: false,
-					aspect_ratio: '4:5',
-					template,
-					poster_data: posterData,
-				}),
-				contentService.processAIGeneratedMedia({
-					entry,
-					product: entry.product || undefined,
-					style: (data?.ai_image_style as any) || 'photo',
-					additional_prompt: data?.ai_image_prompt,
-					num_images: 1,
-					apply_overlay: false,
-					aspect_ratio: '1.91:1',
-					template,
-					poster_data: posterData,
-				}),
-			])
-
-			mediaUrls = [...portraitResult.media_urls, ...landscapeResult.media_urls]
+			if (entry.product?.image_urls?.length) {
+				mediaUrls = entry.product.image_urls.slice(0, data?.num_images || 1)
+			}
 		}
 
 		if (!mediaUrls.length) {
-			throw new BadRequestError('No base images available for template rendering.')
+			throw new BadRequestError('No base images available to apply design template')
 		}
 
-		// Step 3: Apply design template overlay (only for non-AI sources)
-		if (contentSource !== 'AI_GENERATED') {
-			mediaUrls = await contentService.applyDesignTemplate({
-				image_urls: mediaUrls,
-				template,
-				entry,
-				product: entry.product || undefined,
-				additional_prompt: data?.ai_image_prompt,
-				poster_data: posterData,
+		// Step 2: Apply design template via OpenAI image editing
+		mediaUrls = await contentService.applyDesignTemplate({
+			image_urls: mediaUrls,
+			template,
+			entry,
+			product: entry.product || undefined,
+			additional_prompt: data?.ai_image_prompt,
+		})
+
+		jobStore.set(jobId, { ...jobStore.get(jobId)!, progress: { completed: 1, total: 2 } })
+
+		// Step 3: Generate AI caption
+		let aiCaption = data?.base_content || undefined
+		let aiHashtags = data?.hashtags || []
+		let aiCta = data?.cta_text || undefined
+
+		if (!aiCaption) {
+			const captionResult = await aiService.callOpenAIRaw<{ caption: string; hashtags: string[]; cta_text: string }>(`You are a social media copywriter for Rayna Tours, Dubai's top tours & activities company.
+
+RESPOND WITH VALID JSON ONLY:
+{"caption":"the full post caption","hashtags":["hashtag1","hashtag2"],"cta_text":"call to action"}
+
+RULES:
+- Platform: ${entry.platform}
+- Content type: ${entry.content_type}
+- Write an engaging, scroll-stopping caption
+- 10-15 relevant hashtags
+- Platform-appropriate CTA
+${entry.product ? `- Product: ${entry.product.name}, Price: ${entry.product.currency} ${entry.product.price}` : ''}`, `Create post content for:
+Title: ${entry.title}
+Brief: ${entry.description || 'No specific brief'}
+${entry.product ? `Product: ${entry.product.name}` : ''}
+Platform: ${entry.platform} | Type: ${entry.content_type}
+Note: Using AI-designed poster with "${template.name}" style.`)
+
+			aiCaption = captionResult.caption
+			if (!aiHashtags.length) aiHashtags = captionResult.hashtags
+			if (!aiCta) aiCta = captionResult.cta_text
+		}
+
+		// Step 4: Create or update post draft
+		const existingPost = await Post.findOne({
+			where: { calendar_entry_id: entryId, is_active: true },
+			include: [
+				{ model: Campaign, attributes: ['id', 'name', 'goal', 'type'] },
+				{ model: User, as: 'author', attributes: ['id', 'email', 'first_name'] },
+			],
+		})
+
+		let post: Post
+		if (existingPost) {
+			await existingPost.update({
+				media_urls: mediaUrls,
+				base_content: aiCaption || existingPost.base_content,
+				hashtags: aiHashtags.length ? aiHashtags : existingPost.hashtags,
+				cta_text: aiCta || existingPost.cta_text,
 			})
-		}
-
-		// Step 4: Finalize Job & Create/Update Post
-		let post = await Post.findOne({ where: { calendar_entry_id: entry.id } })
-		if (!post) {
+			post = existingPost
+		} else {
 			post = await Post.create({
-				calendar_entry_id: entry.id,
+				calendar_entry_id: entryId,
+				campaign_id: entry.campaign_id || null,
 				author_id: userId,
-				campaign_id: entry.campaign_id,
-				title: entry.title,
-				content_type: entry.content_type,
-				base_content: aiCaption,
+				base_content: aiCaption || null,
 				hashtags: aiHashtags,
 				cta_text: aiCta || null,
 				platforms: [entry.platform],
@@ -324,13 +281,6 @@ RESPOND WITH VALID JSON ONLY:
 				status: 'DRAFT',
 			} as any)
 			await entry.update({ status: 'COMPOSING' })
-		} else {
-			await post.update({
-				base_content: aiCaption,
-				hashtags: aiHashtags,
-				cta_text: aiCta || null,
-				media_urls: mediaUrls,
-			})
 		}
 
 		const full = await Post.findByPk(post.id, {
@@ -349,7 +299,7 @@ RESPOND WITH VALID JSON ONLY:
 		})
 	}
 
-	private async processGeneratePlan(jobId: string, planId: string, input: GeneratePlanInput, products: Product[], userId: string) {
+	private async processGeneratePlan(jobId: string, planId: string, input: GeneratePlanInput, products: Product[]) {
 		const activeCampaigns = await this.fetchActiveCampaigns(input.start_date, input.end_date)
 		const batches = this.splitDateRange(input.start_date, input.end_date, MAX_BATCH_DAYS)
 
@@ -383,11 +333,6 @@ RESPOND WITH VALID JSON ONLY:
 		)
 
 		const fullPlan = await this.findPlanById(planId)
-		
-		// ── AUTO-COMPOSE: Automatically trigger cinematic generation for all entries ──
-		this.autoComposePlanEntries(planId, input.product_ids || [], products, userId).catch(err => {
-			logger.error(`[AutoCompose] Failed for plan ${planId}: ${err.message}`)
-		})
 
 		jobStore.set(jobId, {
 			status: 'COMPLETED',
@@ -398,38 +343,7 @@ RESPOND WITH VALID JSON ONLY:
 		})
 	}
 
-	private async autoComposePlanEntries(planId: string, productIds: string[], allProducts: Product[], userId: string) {
-		const entries = await CalendarEntry.findAll({
-			where: { content_plan_id: planId, is_active: true },
-			include: [{ model: Product }]
-		})
-
-		const collageTemplate = await DesignTemplate.findOne({ where: { slug: { [Op.like]: '%collage%' }, is_active: true } })
-		if (!collageTemplate) {
-			logger.warn(`[AutoCompose] Skip: Master Collage template not found.`)
-			return
-		}
-
-		logger.info(`[AutoCompose] Starting cinematic generation for ${entries.length} entries for plan ${planId}`)
-
-		// Process in small serial batches to avoid hitting rate limits or crashing the server
-		for (const entry of entries) {
-			try {
-				const tempJobId = `auto-cmp-${entry.id}`
-				await this.processComposeWithTemplate(tempJobId, entry.id, userId, entry, 'AI_GENERATED', collageTemplate, {
-					ai_image_style: 'photo',
-					num_images: 1,
-					apply_overlay: true,
-					generate_ai_caption: true
-				})
-				logger.info(`[AutoCompose] Generated cinematic post for entry: ${entry.title}`)
-			} catch (err: any) {
-				logger.error(`[AutoCompose] Entry ${entry.id} failed: ${err.message}`)
-			}
-		}
-	}
-
-	private async processGenerateEntries(jobId: string, plan: ContentPlan, input: GenerateEntriesInput, products: Product[], userId: string) {
+	private async processGenerateEntries(jobId: string, plan: ContentPlan, input: GenerateEntriesInput, products: Product[]) {
 		const startDate = String(plan.start_date)
 		const endDate = String(plan.end_date)
 
@@ -481,11 +395,6 @@ RESPOND WITH VALID JSON ONLY:
 		}
 
 		const fullPlan = await this.findPlanById(plan.id)
-		
-		// ── AUTO-COMPOSE: Automatically trigger cinematic generation for all new entries ──
-		this.autoComposePlanEntries(plan.id, [], products, userId).catch(err => {
-			logger.error(`[AutoCompose] Failed for plan entries ${plan.id}: ${err.message}`)
-		})
 
 		jobStore.set(jobId, {
 			status: 'COMPLETED',

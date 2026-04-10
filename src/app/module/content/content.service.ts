@@ -33,7 +33,6 @@ interface GenerateCarouselInput {
 	slide_count?: number
 	intent?: Intent
 	aspect_ratio?: AspectRatio
-	template_id?: string
 }
 
 interface GenerateReelInput {
@@ -118,8 +117,6 @@ function buildPosterData(
 		includes,
 		dates: formattedDate + (durationShort ? ` | ${durationShort}` : ''),
 		contact: meta.contact || '+971 4 208 7444 | +91 20 6683 8877',
-		location: meta.location || 'Signature Dining',
-		promo_code: meta.promo_code || 'TRAVEL25',
 		brand_name: 'Rayna Tours',
 	}
 }
@@ -213,25 +210,8 @@ class ContentService {
 		slide_count?: number
 		intent?: Intent
 		aspect_ratio?: AspectRatio
-		template_id?: string
 	}): Promise<{ media_urls: string[]; ai_content: { caption: string; hashtags: string[]; cta: string } }> {
-		const { product, platform, template_id } = input
-
-		if (template_id) {
-			const template = await DesignTemplate.findByPk(template_id)
-			if (template) {
-				return this.processAIGeneratedMedia({
-					entry: { title: product.name, description: product.short_description, platform } as any,
-					product,
-					style: 'photo',
-					num_images: input.slide_count,
-					apply_overlay: true,
-					aspect_ratio: input.aspect_ratio,
-					template,
-				})
-			}
-		}
-
+		const { product, platform } = input
 		if (!product.image_urls?.length) throw new BadRequestError('Product has no images')
 
 		const slideCount = Math.min(input.slide_count || product.image_urls.length, product.image_urls.length, 10)
@@ -270,76 +250,43 @@ class ContentService {
 	// ── Private: Carousel Processing ─────────────────────────────────
 
 	private async processCarousel(jobId: string, input: GenerateCarouselInput, product: Product, authorId: string) {
-		const { campaign_id, platform, template_id } = input
+		const { campaign_id, platform } = input
 		const slideCount = Math.min(input.slide_count || product.image_urls.length, product.image_urls.length, 10)
 		const intent = input.intent || this.classifyIntent(product)
 		const priceLabel = `${product.currency} ${product.price}`
 
-		let finalMediaUrls: string[] = []
-		let finalCaption: string = ''
-		let finalHashtags: string[] = []
-		let finalCta: string = ''
-		let finalSlides: any[] = []
+		const [aiContent, downloadedImages] = await Promise.all([
+			aiService.generateCarouselContent({
+				product_name: product.name,
+				product_description: product.short_description || product.description,
+				price: priceLabel,
+				offer: product.offer_label || undefined,
+				intent, platform,
+				slide_count: slideCount,
+			}),
+			this.downloadAllImages(product.image_urls.slice(0, slideCount)),
+		])
 
-		if (template_id) {
-			const template = await DesignTemplate.findByPk(template_id)
-			if (template) {
-				const res = await this.processAIGeneratedMedia({
-					entry: { title: product.name, description: product.short_description, platform } as any,
-					product,
-					style: 'photo',
-					num_images: input.slide_count || 4,
-					apply_overlay: true,
-					aspect_ratio: input.aspect_ratio,
-					template,
-				})
-				finalMediaUrls = res.media_urls
-				finalCaption = res.ai_content.caption
-				finalHashtags = res.ai_content.hashtags
-				finalCta = res.ai_content.cta
-			}
+		const carouselData = aiContent.payload as {
+			slides: Array<{ overlay_text: string; cta_text: string; subtitle?: string }>
+			caption: string
+			hashtags: string[]
+			cta: string
 		}
 
-		if (finalMediaUrls.length === 0) {
-			const [aiContent, downloadedImages] = await Promise.all([
-				aiService.generateCarouselContent({
-					product_name: product.name,
-					product_description: product.short_description || product.description,
-					price: priceLabel,
-					offer: product.offer_label || undefined,
-					intent, platform,
-					slide_count: slideCount,
-				}),
-				this.downloadAllImages(product.image_urls.slice(0, slideCount)),
-			])
-
-			const carouselData = aiContent.payload as {
-				slides: Array<{ overlay_text: string; cta_text: string; subtitle?: string }>
-				caption: string
-				hashtags: string[]
-				cta: string
-			}
-
-			const processedSlides = await this.processSlides(downloadedImages, carouselData.slides, {
-				price: priceLabel, offerLabel: product.offer_label || undefined,
-			}, input.aspect_ratio || 'auto')
-
-			finalMediaUrls = processedSlides.map((s) => s.url)
-			finalCaption = carouselData.caption
-			finalHashtags = carouselData.hashtags
-			finalCta = carouselData.cta
-			finalSlides = processedSlides
-		}
+		const processedSlides = await this.processSlides(downloadedImages, carouselData.slides, {
+			price: priceLabel, offerLabel: product.offer_label || undefined,
+		}, input.aspect_ratio || 'auto')
 
 		const post = await Post.create({
 			calendar_entry_id: input.calendar_entry_id || null,
 			campaign_id: campaign_id || null,
 			author_id: authorId,
-			base_content: finalCaption,
-			hashtags: finalHashtags,
-			cta_text: finalCta,
+			base_content: carouselData.caption,
+			hashtags: carouselData.hashtags,
+			cta_text: carouselData.cta,
 			platforms: [platform],
-			media_urls: finalMediaUrls,
+			media_urls: processedSlides.map((s) => s.url),
 			status: 'DRAFT',
 		} as any)
 
@@ -354,8 +301,8 @@ class ContentService {
 			status: 'COMPLETED',
 			result: {
 				post: fullPost,
-				slides: finalSlides,
-				ai_content: { caption: finalCaption, hashtags: finalHashtags, cta: finalCta, slide_texts: finalSlides },
+				slides: processedSlides,
+				ai_content: { caption: carouselData.caption, hashtags: carouselData.hashtags, cta: carouselData.cta, slide_texts: carouselData.slides },
 				meta: { product_id: product.id, product_name: product.name, intent, platform, slide_count: slideCount },
 			},
 			started_at: jobStore.get(jobId)!.started_at,
@@ -558,9 +505,8 @@ Note: Using stock/custom images, not product-specific content.`)
 		apply_overlay: boolean
 		aspect_ratio?: AspectRatio
 		template?: DesignTemplate
-		poster_data?: Record<string, string>
 	}): Promise<{ media_urls: string[]; ai_content: { caption: string; hashtags: string[]; cta: string } }> {
-		const { entry, product, style, additional_prompt, apply_overlay, template, poster_data } = input
+		const { entry, product, style, additional_prompt, apply_overlay, template } = input
 
 		// Build the image generation prompt — use design template if provided, otherwise fall back to generic
 		let imagePrompt: string
@@ -571,54 +517,33 @@ Note: Using stock/custom images, not product-specific content.`)
 			imagePrompt = `Professional social media image for: ${entry.title}.`
 			if (entry.description) imagePrompt += ` ${entry.description}.`
 			if (product) imagePrompt += ` Product: ${product.name} — ${product.short_description || product.description || ''}.`
-			imagePrompt += ` Professional National Geographic level travel photography. High contrast, vibrant colors, stunning cinematic lighting, 8k resolution, photorealistic masterpiece, award-winning composition, eye-catching and extremely attractive.`
+			imagePrompt += ` Dubai tourism and travel context. High quality, vibrant, eye-catching.`
 			if (additional_prompt) imagePrompt += ` ${additional_prompt}`
 		}
 
 		let imageBuffers: Buffer[]
 
-		// ── Always generate a fresh AI image via Freepik when a template is chosen ──
-		// We never reuse the product photo as background — every render produces a new image.
-		const aspectRatio = (input.aspect_ratio as AspectRatio) || resolveAspectRatio(entry.platform, entry.post_type)
-		const sizeMap: Record<string, 'square_1_1' | 'portrait_3_4' | 'landscape_4_3'> = {
-			'1:1': 'square_1_1',
-			'4:5': 'portrait_3_4',
-			'1.91:1': 'landscape_4_3',
-		}
-		const freepikSize = sizeMap[aspectRatio] || 'square_1_1'
+		// ── Template + product image → programmatic poster renderer ──
+		if (template && product?.image_urls?.length) {
+			const referenceImagePath = await this.downloadImage(product.image_urls[0], 'ref')
+			const referenceBuffer = fs.readFileSync(referenceImagePath)
+			this.cleanup(referenceImagePath)
 
-		const slug = template?.slug?.toLowerCase() || ''
-		const layout = (
-			slug.startsWith('heritage') ? 'heritage' :
-				slug.startsWith('lifestyle') ? 'lifestyle' :
-					slug.startsWith('adventure') ? 'bold-adventure' :
-						slug.startsWith('explorer') ? 'explorer' :
-							slug.startsWith('luxury') ? 'luxury' :
-								slug.startsWith('promo') ? 'promo' :
-									slug.startsWith('nature') ? 'nature' :
-										slug.startsWith('culinary') ? 'culinary' :
-											slug.startsWith('city') ? 'city' :
-												slug.startsWith('family') ? 'family' :
-													slug.startsWith('collage') ? 'collage' : 'brush-script'
-		) as any
-
-		const effectiveNumImages = layout === 'collage' ? 4 : (input.num_images || 1)
-
-		imageBuffers = await freepikService.generateAIImage({
-			prompt: imagePrompt,
-			style,
-			size: freepikSize,
-			num_images: effectiveNumImages,
-		})
-
-		if (template && imageBuffers.length > 0) {
-			// Apply template overlay on top of the fresh AI image
-			const data = poster_data || buildPosterData(entry, input.product)
+			const data = buildPosterData(entry, product)
+			const layoutMap: Record<string, 'brush-script' | 'heritage' | 'bold-adventure' | 'explorer' | 'lifestyle'> = {
+				'brush-script-escape': 'brush-script',
+				'heritage-cinematic': 'heritage',
+				'bold-adventure': 'bold-adventure',
+				'explorer-minimal': 'explorer',
+				'lifestyle-editorial': 'lifestyle',
+			}
+			const layout = layoutMap[template.slug] || 'brush-script' as const
+			const aspectRatio = (input.aspect_ratio as AspectRatio) || resolveAspectRatio(entry.platform, entry.post_type)
 
 			// For lifestyle-editorial: generate editorial copy via AI
 			let lfSubheadline = data.subheadline
 			let lfTagline = data.tagline
-			if (slug.startsWith('lifestyle')) {
+			if (template.slug === 'lifestyle-editorial') {
 				try {
 					const copy = await aiService.callOpenAIRaw<{ tagline: string; description: string }>(`You are a world-class travel copywriter at a FAANG-level social media agency. Write luxury editorial copy for a travel poster.
 
@@ -629,7 +554,7 @@ RULES:
 - Tagline: dreamy, evocative, max 6 words (e.g. "Serenity, Shores & Island Magic" or "Where Dreams Meet the Horizon")
 - Description: 2-3 short poetic lines, conversational luxury tone, max 60 chars (e.g. "From hidden gems\\nto iconic views,\\ndiscover unforgettable\\nmoments.")
 - No hashtags, no emojis, no exclamation marks
-- Think: Condé Nast Traveler, AFAR Magazine, Kinfolk editorial style`, `Destination: ${entry.title}\nBrief: ${entry.description || 'Premium travel experience'}\n${input.product ? `Product: ${input.product.name}` : ''}`)
+- Think: Condé Nast Traveler, AFAR Magazine, Kinfolk editorial style`, `Destination: ${entry.title}\nBrief: ${entry.description || 'Premium travel experience'}\n${product ? `Product: ${product.name}` : ''}`)
 
 					lfTagline = copy.tagline || lfTagline
 					lfSubheadline = copy.description || lfSubheadline
@@ -651,17 +576,40 @@ RULES:
 				layout,
 			}
 
-			if (layout === 'collage' && imageBuffers.length >= 2) {
-				const masterBuffer = await imageOverlayService.renderPoster(imageBuffers[0], {
-					...posterConfig,
-					collageBuffers: imageBuffers
-				}, aspectRatio)
-				imageBuffers = [masterBuffer]
+			let posterBuffer: Buffer
+
+			// Lifestyle Editorial: AI adds human FIRST on the raw image, then overlay text on top
+			if (template.slug === 'lifestyle-editorial') {
+				console.log('>>> Lifestyle editorial: calling Flux Kontext Pro to add human traveler...')
+				const enhanced = await aiService.editImage({
+					imageBuffer: referenceBuffer,
+					prompt: LIFESTYLE_HUMAN_PROMPT,
+					model: 'flux-kontext',
+				})
+				console.log(`>>> Flux Kontext returned ${enhanced.length} image(s)`)
+				const baseForOverlay = enhanced.length > 0 ? enhanced[0] : referenceBuffer
+				posterBuffer = await imageOverlayService.renderPoster(baseForOverlay, posterConfig, aspectRatio)
+				console.log('>>> Lifestyle editorial: human element added + overlay applied')
 			} else {
-				imageBuffers = await Promise.all(imageBuffers.map(async (buf) =>
-					imageOverlayService.renderPoster(buf, posterConfig, aspectRatio)
-				))
+				posterBuffer = await imageOverlayService.renderPoster(referenceBuffer, posterConfig, aspectRatio)
 			}
+
+			imageBuffers = [posterBuffer]
+		} else {
+			// ── No template or no product image → Freepik text-to-image ──
+			const sizeMap: Record<string, 'square_1_1' | 'portrait_3_4' | 'landscape_4_3'> = {
+				'1:1': 'square_1_1',
+				'4:5': 'portrait_3_4',
+				'1.91:1': 'landscape_4_3',
+			}
+			const size = sizeMap[input.aspect_ratio || ''] || 'square_1_1'
+
+			imageBuffers = await freepikService.generateAIImage({
+				prompt: imagePrompt,
+				style,
+				size,
+				num_images: input.num_images || 1,
+			})
 		}
 
 		if (!imageBuffers.length) throw new BadRequestError('AI image generation returned no usable images')
@@ -747,10 +695,9 @@ Note: Using AI-generated imagery.`)
 		entry: CalendarEntry
 		product?: Product
 		additional_prompt?: string
-		poster_data?: Record<string, string>
 	}): Promise<string[]> {
-		const { image_urls, template, entry, product, poster_data } = input
-		const data = poster_data || buildPosterData(entry, product)
+		const { image_urls, template, entry, product } = input
+		const data = buildPosterData(entry, product)
 		const aspectRatio = resolveAspectRatio(entry.platform, entry.post_type)
 
 		// ── Route: Python (Pillow) vs HTML (Puppeteer) ───────────────
@@ -790,7 +737,6 @@ Note: Using AI-generated imagery.`)
 
 		const bgImagePath = localPaths[0]
 		const allPhotoPaths = localPaths.slice(0)
-		logger.info(`[py-template] image_urls received: ${image_urls.length}, localPaths downloaded: ${localPaths.length}`)
 
 		try {
 			const config: Record<string, unknown> = {
@@ -804,35 +750,31 @@ Note: Using AI-generated imagery.`)
 			}
 
 			switch (template.slug) {
-				case 'promo-collage': {
+				case 'promo-collage':
 					config.headline = `Get up to 20% OFF*`
 					config.subheadline = `on ${data.headline}`
-					config.coupon_code = 'RAYNOW'
-					config.coupon_label = 'Use Code:'
-					config.bg_type = 'striped'
-					// Always produce 3 collage photos from product images
-					const squares: string[] = []
-					for (let i = 0; i < 3; i++) squares.push(allPhotoPaths[i % allPhotoPaths.length])
-					config.photos = squares
+					config.coupon_code = data.price || 'RAYNOW'
+					config.coupon_label = 'Starting From:'
+					config.bg_type = 'image'
+					config.photos = allPhotoPaths
 					break
-				}
 				case 'hotel-feature':
 					config.pre_headline = `For that Dream Trip:`
 					config.headline = `GRAB UP TO\n${data.price}`
 					config.subheadline = `on ${data.headline}`
 					config.coupon_code = data.duration || data.dates || 'BOOK NOW'
-					config.coupon_label = 'Starting From:'
+					config.coupon_label = 'Duration:'
 					config.features = [
-						{ icon: '\u2713', text: data.includes?.split('|')[0]?.trim() || 'Premium\nExperience' },
-						{ icon: '\u21BB', text: 'Free Cancellation\nAvailable' },
+						{ icon: '\u2713', text: data.includes?.split('|')[0]?.trim() || 'Premium Stay' },
+						{ icon: '\u2302', text: 'Free Cancellation\nAvailable' },
 						{ icon: '\u2605', text: 'Verified Reviews\n& Ratings' },
 						{ icon: '\u25A3', text: 'Real Photos\nby Guests' },
-						{ icon: '\u260E', text: `Contact Us\n${data.contact?.split('|')[0]?.trim() || 'Anytime'}` },
+						{ icon: '\u25C9', text: `Contact\n${data.contact?.split('|')[0]?.trim() || ''}` },
 					]
 					break
 				case 'phone-mockup':
 					config.headline = data.headline
-					config.subheadline = `Book your ${data.headline} trip today!`
+					config.subheadline = data.subheadline || `Book your ${data.headline} trip today!`
 					config.accent_bars = [[37, 99, 235], [220, 38, 38]]
 					config.phone_image = localPaths.length > 1 ? localPaths[1] : localPaths[0]
 					break
@@ -840,13 +782,16 @@ Note: Using AI-generated imagery.`)
 					config.headline = `${data.headline} from ${data.price}`
 					config.subheadline = data.includes || 'Tours & Attractions'
 					config.coupon_code = data.duration || data.dates || ''
-					config.bg_texture = 'striped'
+					config.bg_texture = 'wood'
 					config.photos = allPhotoPaths
 					break
 				case 'minimal-cta':
 					config.headline = data.headline
-					config.subheadline = `Starting from ${data.price}`
+					config.subheadline = data.subheadline || data.tagline || ''
 					config.cta_text = 'Book Now'
+					config.coupon_code = data.price || ''
+					config.coupon_label = 'Starting From:'
+					config.headline_position = 'bottom'
 					break
 				default:
 					config.bg_type = 'image'
@@ -854,21 +799,12 @@ Note: Using AI-generated imagery.`)
 					break
 			}
 
-			// phone-mockup renders as landscape 16:9; all others use the requested ratio
-			// These templates render as landscape 16:9
-			const landscapeSlugs = ['phone-mockup', 'promo-collage', 'photo-board']
-			const templateAspect = landscapeSlugs.includes(template.slug)
-				? '16:9' as const
-				: (aspectRatio === 'auto' ? '4:5' : aspectRatio) as any
-
-			logger.info(`[py-template] Rendering ${template.slug} aspect=${templateAspect} bg=${bgImagePath} photos=${(config.photos as string[] || []).length}`)
-
 			const outputBuffer = await pythonTemplateRenderer.render({
 				template: template.slug as any,
 				config,
 				base_image: bgImagePath,
 				format: 'PNG',
-				aspect_ratio: templateAspect,
+				aspect_ratio: aspectRatio === 'auto' ? '4:5' : aspectRatio,
 			})
 
 			let url: string
@@ -898,20 +834,15 @@ Note: Using AI-generated imagery.`)
 		entry: CalendarEntry,
 		product?: Product,
 	): Promise<string[]> {
-		const slug = template.slug.toLowerCase()
-		const layout = (
-			slug.startsWith('heritage') ? 'heritage' :
-				slug.startsWith('lifestyle') ? 'lifestyle' :
-					slug.startsWith('adventure') ? 'bold-adventure' :
-						slug.startsWith('explorer') ? 'explorer' :
-							slug.startsWith('luxury') ? 'luxury' :
-								slug.startsWith('promo') ? 'promo' :
-									slug.startsWith('nature') ? 'nature' :
-										slug.startsWith('culinary') ? 'culinary' :
-											slug.startsWith('city') ? 'city' :
-												slug.startsWith('family') ? 'family' :
-													slug.startsWith('collage') ? 'collage' : 'brush-script'
-		) as any
+		const layoutMap: Record<string, 'brush-script' | 'heritage' | 'bold-adventure' | 'explorer' | 'lifestyle'> = {
+			'brush-script-escape': 'brush-script',
+			'heritage-cinematic': 'heritage',
+			'bold-adventure': 'bold-adventure',
+			'explorer-minimal': 'explorer',
+			'lifestyle-editorial': 'lifestyle',
+		}
+
+		const layout = layoutMap[template.slug] || 'brush-script' as const
 
 		let lifestyleTagline = data.tagline
 		let lifestyleDesc = data.subheadline
