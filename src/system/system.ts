@@ -46,7 +46,7 @@ export class System {
 	start = (app: http.Server) => {
 		try {
 			dbConnSeq
-				.sync({ alter: true, logging: false })
+				.sync({ logging: false })
 				.then(async () => {
 					logger.info('📁[DB]: Database is connected and synced.')
 					await seedProducts()
