@@ -61,14 +61,21 @@ class PromoCollageTemplate(BaseTemplate):
         # ── Background ───────────────────────────────────────────────
         if bg_type == "image" and base_image:
             canvas = self.cover_crop(base_image.convert("RGBA"), self.w, self.h)
-            # Darken for text readability
-            canvas = Effects.gradient_overlay(
-                canvas,
-                start=(0, 0, 0, 180),
-                end=(0, 0, 0, 40),
-                direction="left_right",
-                coverage=0.7,
-            )
+            # Left-side darken for text readability + subtle bottom gradient
+            canvas = Effects.multi_gradient_overlay(canvas, [
+                {
+                    "start": (15, 30, 60, 200),
+                    "end": (15, 30, 60, 0),
+                    "direction": "left_right",
+                    "coverage": 0.65,
+                },
+                {
+                    "start": (0, 0, 0, 120),
+                    "end": (0, 0, 0, 0),
+                    "direction": "bottom_up",
+                    "coverage": 0.3,
+                },
+            ])
         elif bg_type == "striped":
             bg_start = _parse_color(config.get("bg_start_color"), (200, 215, 230))
             canvas = Effects.striped_background(

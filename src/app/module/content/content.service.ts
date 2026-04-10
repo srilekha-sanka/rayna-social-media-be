@@ -719,92 +719,119 @@ Note: Using AI-generated imagery.`)
 		const logoPath = path.join(__dirname, '../../../../assets/rayna-logo.png')
 		const hasLogo = fs.existsSync(logoPath)
 
-		// Build Python template config from poster data
-		const config: Record<string, unknown> = {
-			headline: data.headline,
-			subheadline: data.subheadline || data.tagline || '',
-			coupon_code: data.price || '',
-			coupon_label: 'Starting From:',
-			logo_path: hasLogo ? logoPath : '',
-			accent_color: [234, 88, 12],
-		}
-
-		// Template-specific config enrichment
-		switch (template.slug) {
-			case 'hotel-feature':
-				config.pre_headline = `Explore ${data.headline}`
-				config.headline = `GRAB UP TO\n${data.price}`
-				config.subheadline = data.includes || data.subheadline || ''
-				config.coupon_code = data.duration || data.dates || ''
-				config.coupon_label = 'Duration:'
-				config.features = [
-					{ icon: '\u2713', text: data.includes?.split('|')[0]?.trim() || 'Premium Stay' },
-					{ icon: '\u2302', text: 'Free Cancellation\nAvailable' },
-					{ icon: '\u2605', text: 'Verified Reviews\n& Ratings' },
-					{ icon: '\u25A3', text: 'Real Photos\nby Guests' },
-					{ icon: '\u25C9', text: `Contact\n${data.contact?.split('|')[0]?.trim() || ''}` },
-				]
-				break
-			case 'phone-mockup':
-				config.headline = data.headline
-				config.subheadline = data.subheadline || `Book your ${data.headline} trip today!`
-				config.accent_bars = [[37, 99, 235], [220, 38, 38]]
-				break
-			case 'photo-board':
-				config.headline = `${data.headline} from ${data.price}`
-				config.subheadline = data.includes || 'Tours & Attractions'
-				config.coupon_code = data.duration || data.dates || ''
-				config.bg_texture = 'wood'
-				break
-			case 'minimal-cta':
-				config.headline = data.headline
-				config.subheadline = data.subheadline || data.tagline || ''
-				config.cta_text = 'Book Now'
-				config.coupon_code = data.price || ''
-				config.coupon_label = 'Starting From:'
-				config.headline_position = 'bottom'
-				break
-			case 'promo-collage':
-			default:
-				config.headline = `${data.headline} from ${data.price}`
-				config.subheadline = data.includes || 'Tours & Attractions'
-				config.coupon_code = data.duration || data.dates || ''
-				config.coupon_label = 'Book Now:'
-				config.bg_type = 'gradient'
-				break
-		}
-
-		const resultUrls: string[] = []
-
+		// ── Step 1: Download ALL product images to local files ────────
+		const localPaths: string[] = []
 		for (let i = 0; i < image_urls.length; i++) {
-			const localPath = await this.downloadImage(image_urls[i], `py-template-src-${i}`)
-
 			try {
-				const outputBuffer = await pythonTemplateRenderer.render({
-					template: template.slug as any,
-					config,
-					base_image: localPath,
-					format: 'PNG',
-					aspect_ratio: aspectRatio === 'auto' ? '4:5' : aspectRatio,
-				})
-
-				let url: string
-				if (cloudinaryService.enabled) {
-					const uploaded = await cloudinaryService.uploadBuffer(outputBuffer, { folder: 'rayna/designed-posters' })
-					url = uploaded.secure_url
-				} else {
-					const fileName = `py-poster-${Date.now()}-${i}.png`
-					const destPath = path.join(PROCESSED_DIR, fileName)
-					fs.writeFileSync(destPath, outputBuffer)
-					url = `/uploads/processed/${fileName}`
-				}
-				resultUrls.push(url)
-			} finally {
-				this.cleanup(localPath)
+				const p = await this.downloadImage(image_urls[i], `py-src-${i}`)
+				localPaths.push(p)
+			} catch (err: any) {
+				logger.warn(`Failed to download image ${i}: ${err.message}`)
 			}
 		}
 
-		return resultUrls
+		if (localPaths.length === 0) {
+			logger.error('No images available for Python template render')
+			return []
+		}
+
+		// First image = background, all images = photos for collage/mockup
+		const bgImagePath = localPaths[0]
+		const allPhotoPaths = localPaths.slice(0) // all images including first
+
+		try {
+			// ── Step 2: Build config with images ─────────────────────────
+			const config: Record<string, unknown> = {
+				headline: data.headline,
+				subheadline: data.subheadline || data.tagline || '',
+				coupon_code: data.price || '',
+				coupon_label: 'Starting From:',
+				logo_path: hasLogo ? logoPath : '',
+				accent_color: [234, 88, 12],
+				tc_text: '*T&C apply',
+			}
+
+			switch (template.slug) {
+				case 'promo-collage':
+					config.headline = `Get up to 20% OFF*`
+					config.subheadline = `on ${data.headline}`
+					config.coupon_code = data.price || 'RAYNOW'
+					config.coupon_label = 'Starting From:'
+					config.bg_type = 'image'       // USE the product image as BG
+					config.photos = allPhotoPaths   // ALL images as polaroid frames
+					break
+
+				case 'hotel-feature':
+					config.pre_headline = `For that Dream Trip:`
+					config.headline = `GRAB UP TO\n${data.price}`
+					config.subheadline = `on ${data.headline}`
+					config.coupon_code = data.duration || data.dates || 'BOOK NOW'
+					config.coupon_label = 'Duration:'
+					config.features = [
+						{ icon: '\u2713', text: data.includes?.split('|')[0]?.trim() || 'Premium Stay' },
+						{ icon: '\u2302', text: 'Free Cancellation\nAvailable' },
+						{ icon: '\u2605', text: 'Verified Reviews\n& Ratings' },
+						{ icon: '\u25A3', text: 'Real Photos\nby Guests' },
+						{ icon: '\u25C9', text: `Contact\n${data.contact?.split('|')[0]?.trim() || ''}` },
+					]
+					break
+
+				case 'phone-mockup':
+					config.headline = data.headline
+					config.subheadline = data.subheadline || `Book your ${data.headline} trip today!`
+					config.accent_bars = [[37, 99, 235], [220, 38, 38]]
+					// Second image goes inside phone screen; first is background
+					config.phone_image = localPaths.length > 1 ? localPaths[1] : localPaths[0]
+					break
+
+				case 'photo-board':
+					config.headline = `${data.headline} from ${data.price}`
+					config.subheadline = data.includes || 'Tours & Attractions'
+					config.coupon_code = data.duration || data.dates || ''
+					config.bg_texture = 'wood'
+					config.photos = allPhotoPaths   // ALL images as scattered photos
+					break
+
+				case 'minimal-cta':
+					config.headline = data.headline
+					config.subheadline = data.subheadline || data.tagline || ''
+					config.cta_text = 'Book Now'
+					config.coupon_code = data.price || ''
+					config.coupon_label = 'Starting From:'
+					config.headline_position = 'bottom'
+					break
+
+				default:
+					config.bg_type = 'image'
+					config.photos = allPhotoPaths
+					break
+			}
+
+			// ── Step 3: Render ONE composite poster ──────────────────────
+			const outputBuffer = await pythonTemplateRenderer.render({
+				template: template.slug as any,
+				config,
+				base_image: bgImagePath,   // first image as full background
+				format: 'PNG',
+				aspect_ratio: aspectRatio === 'auto' ? '4:5' : aspectRatio,
+			})
+
+			let url: string
+			if (cloudinaryService.enabled) {
+				const uploaded = await cloudinaryService.uploadBuffer(outputBuffer, { folder: 'rayna/designed-posters' })
+				url = uploaded.secure_url
+			} else {
+				const fileName = `py-poster-${Date.now()}.png`
+				const destPath = path.join(PROCESSED_DIR, fileName)
+				fs.writeFileSync(destPath, outputBuffer)
+				url = `/uploads/processed/${fileName}`
+			}
+
+			return [url]
+		} finally {
+			// ── Step 4: Cleanup all downloaded images ────────────────────
+			for (const p of localPaths) this.cleanup(p)
+		}
 	}
 
 	// ── HTML / Puppeteer renderer ───────────────────────────────────

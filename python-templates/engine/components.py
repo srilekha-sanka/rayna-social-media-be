@@ -295,7 +295,8 @@ class Components:
 # ── Internal ─────────────────────────────────────────────────────────
 
 
-def _rgba(c: Color) -> Tuple[int, int, int, int]:
+def _rgba(c) -> Tuple[int, int, int, int]:
+    c = tuple(c)  # handle JSON lists
     if len(c) == 4:
         return c  # type: ignore[return-value]
     return c + (255,)  # type: ignore[return-value]

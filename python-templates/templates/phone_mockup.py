@@ -41,7 +41,7 @@ class PhoneMockupTemplate(BaseTemplate):
         subheadline = config.get("subheadline", "Since You've Booked a Trip with Us!")
         phone_image_path = config.get("phone_image", "")
         logo_path = config.get("logo_path", "")
-        accent_colors = config.get("accent_bars", [(37, 99, 235), (220, 38, 38)])
+        accent_colors = [tuple(c) for c in config.get("accent_bars", [(37, 99, 235), (220, 38, 38)])]
         tc_text = config.get("tc_text", "*T&Cs Apply")
         darken = config.get("overlay_darken", 0.15)
 
