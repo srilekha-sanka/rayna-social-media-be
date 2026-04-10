@@ -1,237 +1,149 @@
 <!DOCTYPE html>
 <html>
-
 <head>
-	<meta charset="UTF-8">
-	<link
-		href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Montserrat:wght@300;400;600;700;900&display=swap"
-		rel="stylesheet">
-	<style>
-		* {
-			margin: 0;
-			padding: 0;
-			box-sizing: border-box;
-		}
+<meta charset="UTF-8">
+<style>
+	* { margin: 0; padding: 0; box-sizing: border-box; }
 
-		body {
-			width: var(--viewport-width);
-			height: var(--viewport-height);
-			overflow: hidden;
-			background: transparent;
-			font-family: 'Montserrat', sans-serif;
-		}
+	body {
+		width: var(--viewport-width);
+		height: var(--viewport-height);
+		overflow: hidden;
+		background: transparent;
+	}
 
-		.wrap {
-			width: 100%;
-			height: 100%;
-			position: relative;
-		}
+	.container {
+		width: 100%;
+		height: 100%;
+		position: relative;
+	}
 
-		/* Explorer: strong top + strong corner vignette */
-		.grad {
-			position: absolute;
-			inset: 0;
-			background:
-				linear-gradient(180deg,
-					rgba(0, 0, 0, 0.7) 0%,
-					rgba(0, 0, 0, 0.1) 35%,
-					rgba(0, 0, 0, 0.1) 55%,
-					rgba(0, 0, 0, 0.85) 82%,
-					rgba(0, 0, 0, 0.97) 100%);
-		}
+	/* ── Bottom gradient ── */
+	.bottom-gradient {
+		position: absolute;
+		bottom: 0; left: 0; right: 0;
+		height: 32%;
+		background: linear-gradient(
+			to bottom,
+			rgba(0,0,0,0) 0%,
+			rgba(0,0,0,0.45) 45%,
+			rgba(0,0,0,0.85) 100%
+		);
+	}
 
-		.grad-vignette {
-			position: absolute;
-			inset: 0;
-			box-shadow: inset 0 0 100px rgba(0, 0, 0, 0.6), inset 0 0 200px rgba(0, 0, 0, 0.3);
-		}
+	.content {
+		position: absolute;
+		top: 0; left: 0; right: 0; bottom: 0;
+	}
 
-		.layer {
-			position: absolute;
-			inset: 0;
-		}
+	/* ── "Explore" ── */
+	.explore-label {
+		position: absolute;
+		top: 18%;
+		width: 100%;
+		text-align: center;
+		font-family: 'Dancing Script', 'Great Vibes', cursive;
+		font-size: 7vh;
+		font-weight: 700;
+		color: #F5E6D3;
+		text-shadow: 2px 3px 6px rgba(0,0,0,0.7);
+		line-height: 1;
+	}
 
-		/* ── Top strip ── */
-		.top-strip {
-			position: absolute;
-			top: 0;
-			left: 0;
-			right: 0;
-			height: clamp(40px, 8vh, 90px);
-			background: rgba(0, 0, 0, 0.5);
-			backdrop-filter: blur(10px);
-			border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-			display: flex;
-			align-items: center;
-			padding: 0 clamp(16px, 4vw, 50px);
-			justify-content: space-between;
-		}
+	/* ── Headline ── */
+	.headline {
+		position: absolute;
+		top: 26%;
+		width: 100%;
+		text-align: center;
+		padding: 0 4%;
+		font-family: 'Playfair Display', Georgia, serif;
+		font-size: var(--headline-font-size, 13vh);
+		font-weight: 400;
+		color: #F5E6D3;
+		letter-spacing: 3px;
+		text-transform: uppercase;
+		line-height: 1;
+		text-shadow: 3px 4px 6px rgba(0,0,0,0.75);
+	}
 
-		.brand-strip {
-			font-size: clamp(9px, 1.3vw, 18px);
-			font-weight: 900;
-			letter-spacing: 4px;
-			color: #fff;
-			text-transform: uppercase;
-		}
+	/* ── Sub-locations ── */
+	.sub-locations {
+		position: absolute;
+		top: 43%;
+		width: 100%;
+		text-align: center;
+		font-family: 'Montserrat', sans-serif;
+		font-size: 1.6vh;
+		font-weight: 600;
+		color: rgba(255, 255, 255, 0.85);
+		letter-spacing: 0.35em;
+		text-transform: uppercase;
+		text-shadow: 0 2px 6px rgba(0,0,0,0.5);
+	}
 
-		.explore-word {
-			font-size: clamp(7px, 1vw, 13px);
-			font-weight: 300;
-			letter-spacing: 5px;
-			color: rgba(255, 255, 255, 0.45);
-			text-transform: uppercase;
-		}
+	/* ──banner ── */
+	.banner {
+	position: absolute;
+	bottom: 18%;
+	left: 50%;
+	transform: translateX(-50%);
+	background: #E6BE8A;
+	border-radius: 50px;
+	padding: 1.6vh 4.5vh;
+	box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+	white-space: nowrap;
+}
 
-		/* ── Central huge destination name ── */
-		.center-hero {
-			position: absolute;
-			top: 50%;
-			left: 0;
-			right: 0;
-			transform: translateY(-55%);
-			text-align: center;
-			padding: 0 4%;
-		}
+.banner-text {
+	font-family: 'Montserrat', sans-serif;
+	font-size: 2vh;
+	font-weight: 600;
+	color: #2A2A2A;
+	letter-spacing: 0.15em;
+	text-transform: uppercase;
+}
 
-		.dest-name {
-			font-family: 'Playfair Display', serif;
-			font-size: clamp(40px, 14vw, 200px);
-			font-weight: 900;
-			color: rgba(255, 255, 255, 0.92);
-			line-height: 0.9;
-			letter-spacing: -2px;
-			text-transform: uppercase;
-			text-shadow:
-				0 4px 40px rgba(0, 0, 0, 0.8),
-				0 0 80px rgba(255, 255, 255, 0.1);
-		}
-
-		.dest-subtitle {
-			margin-top: clamp(8px, 1.5vh, 18px);
-			font-size: clamp(9px, 1.3vw, 17px);
-			font-weight: 300;
-			letter-spacing: 8px;
-			color: rgba(255, 255, 255, 0.5);
-			text-transform: uppercase;
-		}
-
-		/* ── Bottom info bar ── */
-		.info-bar {
-			position: absolute;
-			bottom: 0;
-			left: 0;
-			right: 0;
-			background: rgba(0, 0, 0, 0.8);
-			backdrop-filter: blur(20px);
-			border-top: 1px solid rgba(255, 255, 255, 0.1);
-			padding: clamp(12px, 2.5vh, 28px) clamp(16px, 4vw, 50px);
-			display: flex;
-			align-items: center;
-			justify-content: space-between;
-			gap: 3vw;
-		}
-
-		.info-cell {
-			display: flex;
-			flex-direction: column;
-			gap: 3px;
-		}
-
-		.ic-label {
-			font-size: clamp(6px, 0.85vw, 11px);
-			font-weight: 700;
-			letter-spacing: 2.5px;
-			text-transform: uppercase;
-			color: rgba(255, 255, 255, 0.35);
-		}
-
-		.ic-value {
-			font-size: clamp(10px, 1.5vw, 20px);
-			font-weight: 800;
-			color: #fff;
-			letter-spacing: 1px;
-			text-shadow: 0 4px 10px rgba(0,0,0,0.9);
-		}
-
-		.ic-price {
-			color: #60CFFF;
-		}
-
-		.info-divider {
-			width: 1px;
-			align-self: stretch;
-			background: rgba(255, 255, 255, 0.12);
-			flex-shrink: 0;
-		}
-
-		.book-btn {
-			background: #60CFFF;
-			color: #08080c;
-			font-size: clamp(9px, 1.1vw, 14px);
-			font-weight: 800;
-			letter-spacing: 2px;
-			text-transform: uppercase;
-			padding: clamp(9px, 1.6vh, 18px) clamp(16px, 2.5vw, 32px);
-			border-radius: 6px;
-			white-space: nowrap;
-			flex-shrink: 0;
-		}
-
-		/* ── Landscape Optimizations (1.91:1) ── */
-		@media (min-aspect-ratio: 1.2/1) {
-			.center-hero {
-				transform: translateY(-65%);
-			}
-			.dest-name {
-				font-size: clamp(40px, 10vw, 120px);
-			}
-			.dest-subtitle {
-				font-size: clamp(8px, 1.2vw, 16px);
-			}
-			.info-bar {
-				padding: clamp(10px, 2vh, 20px) clamp(16px, 4vw, 50px);
-			}
-		}
-	</style>
+	/* ── Contact footer ── */
+	.contact-footer {
+		position: absolute;
+		bottom: 3.5%;
+		left: 6%;
+		right: 6%;
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+	}
+	.contact-item {
+		font-family: 'Oswald', 'Montserrat', Arial, sans-serif;
+		font-size: 1.6vh;
+		font-weight: 700;
+		color: #FFFFFF;
+		letter-spacing: 1px;
+		text-shadow: 2px 3px 6px rgba(0,0,0,0.8);
+	}
+</style>
 </head>
-
 <body>
-	<div class="wrap">
-		<div class="grad"></div>
-		<div class="grad-vignette"></div>
-		<div class="layer">
-			<div class="top-strip">
-				<div class="brand-strip">{{brand_name}}</div>
-				<div class="explore-word">Explore the World</div>
+	<div class="container">
+		<div class="bottom-gradient"></div>
+		<div class="content">
+			<div class="explore-label">Explore</div>
+			<div class="headline" style="--headline-font-size: {{headlineFontSize}}">{{headline}}</div>
+			<div class="sub-locations">{{subheadline}}</div>
+
+			<div class="banner">
+				<div class="banner-text">{{bannerText}}</div>
 			</div>
 
-			<div class="center-hero">
-				<div class="dest-name">{{headline}}</div>
-				<div class="dest-subtitle">{{subheadline}}</div>
-			</div>
-
-			<div class="info-bar">
-				<div class="info-cell">
-					<div class="ic-label">Destination</div>
-					<div class="ic-value">{{destination}}</div>
+			<div class="contact-footer">
+				<div class="contact-item">{{contactLeft}}</div>
+				<div>
+					<img src="{{logoUrl}}" alt="Brand Logo" style="height: 10vh;">
 				</div>
-				<div class="info-divider"></div>
-				<div class="info-cell">
-					<div class="ic-label">Starting From</div>
-					<div class="ic-value ic-price">{{price}}</div>
-				</div>
-				<div class="info-divider"></div>
-				<div class="info-cell">
-					<div class="ic-label">Includes</div>
-					<div class="ic-value"
-						style="font-size: clamp(9px,1.1vw,14px); font-weight:300; color:rgba(255,255,255,0.7)">
-						{{includes}}</div>
-				</div>
-				<div class="book-btn">Book Now →</div>
+				<div class="contact-item">{{contactRight}}</div>
 			</div>
 		</div>
 	</div>
 </body>
-
 </html>
