@@ -620,17 +620,34 @@ Generate a bold, clean, premium Instagram travel poster with:
 	},
 ]
 
+/**
+ * Smart seed: upserts by slug.
+ * - Missing templates → inserted
+ * - Existing templates → renderer field updated (fixes html→python)
+ * - Safe to run on every server start
+ */
 export const seedDesignTemplates = async (): Promise<void> => {
 	try {
-		const existingCount = await DesignTemplate.count()
+		let inserted = 0
+		let updated = 0
 
-		if (existingCount > 0) {
-			logger.info(`[Seed] Skipping design template seed — ${existingCount} templates already exist`)
-			return
+		for (const tmpl of DESIGN_TEMPLATES) {
+			const existing = await DesignTemplate.findOne({ where: { slug: tmpl.slug } })
+
+			if (!existing) {
+				await DesignTemplate.create(tmpl as any)
+				inserted++
+			} else if (existing.renderer !== tmpl.renderer) {
+				await existing.update({ renderer: tmpl.renderer })
+				updated++
+			}
 		}
 
-		await DesignTemplate.bulkCreate(DESIGN_TEMPLATES)
-		logger.info(`[Seed] Seeded ${DESIGN_TEMPLATES.length} design templates`)
+		if (inserted > 0 || updated > 0) {
+			logger.info(`[Seed] Design templates: ${inserted} inserted, ${updated} updated`)
+		} else {
+			logger.info(`[Seed] Design templates: all ${DESIGN_TEMPLATES.length} up to date`)
+		}
 	} catch (error) {
 		logger.error('[Seed] Failed to seed design templates:', error)
 	}
@@ -641,7 +658,7 @@ export const reseedDesignTemplates = async (): Promise<void> => {
 		await DesignTemplate.destroy({ where: {}, force: true })
 		logger.info('[Seed] Cleared existing design templates')
 
-		await DesignTemplate.bulkCreate(DESIGN_TEMPLATES)
+		await DesignTemplate.bulkCreate(DESIGN_TEMPLATES as any[])
 		logger.info(`[Seed] Re-seeded ${DESIGN_TEMPLATES.length} design templates`)
 	} catch (error) {
 		logger.error('[Seed] Failed to re-seed design templates:', error)
