@@ -175,6 +175,12 @@ class ContentStudioService {
 	) {
 		let mediaUrls: string[] = data?.media_urls || []
 
+		// Templates that need multiple images override the requested count
+		const multiImageSlugs = ['promo-collage', 'photo-board']
+		const numImages = multiImageSlugs.includes(template.slug)
+			? 4
+			: (data?.num_images || 1)
+
 		// Step 1: Get base images from the chosen source
 		if (contentSource === 'PRODUCT') {
 			const genConfig = entry.content_plan?.generation_config as { product_ids?: string[] } | null
@@ -191,7 +197,7 @@ class ContentStudioService {
 				entry.product = await Product.findByPk(entry.product_id) as Product
 			}
 			if (entry.product?.image_urls?.length) {
-				mediaUrls = entry.product.image_urls.slice(0, data?.num_images || 1)
+				mediaUrls = entry.product.image_urls.slice(0, numImages)
 			}
 		} else if (contentSource === 'STOCK') {
 			if (data?.stock_image_urls?.length) {
@@ -202,7 +208,7 @@ class ContentStudioService {
 				entry.product = await Product.findByPk(entry.product_id) as Product
 			}
 			if (entry.product?.image_urls?.length) {
-				mediaUrls = entry.product.image_urls.slice(0, data?.num_images || 1)
+				mediaUrls = entry.product.image_urls.slice(0, numImages)
 			}
 		}
 
