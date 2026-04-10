@@ -737,7 +737,6 @@ Note: Using AI-generated imagery.`)
 
 		const bgImagePath = localPaths[0]
 		const allPhotoPaths = localPaths.slice(0)
-		logger.info(`[py-template] image_urls received: ${image_urls.length}, localPaths downloaded: ${localPaths.length}`)
 
 		try {
 			const config: Record<string, unknown> = {
@@ -751,35 +750,31 @@ Note: Using AI-generated imagery.`)
 			}
 
 			switch (template.slug) {
-				case 'promo-collage': {
+				case 'promo-collage':
 					config.headline = `Get up to 20% OFF*`
 					config.subheadline = `on ${data.headline}`
-					config.coupon_code = 'RAYNOW'
-					config.coupon_label = 'Use Code:'
-					config.bg_type = 'striped'
-					// Always produce 3 collage photos from product images
-					const squares: string[] = []
-					for (let i = 0; i < 3; i++) squares.push(allPhotoPaths[i % allPhotoPaths.length])
-					config.photos = squares
+					config.coupon_code = data.price || 'RAYNOW'
+					config.coupon_label = 'Starting From:'
+					config.bg_type = 'image'
+					config.photos = allPhotoPaths
 					break
-				}
 				case 'hotel-feature':
 					config.pre_headline = `For that Dream Trip:`
 					config.headline = `GRAB UP TO\n${data.price}`
 					config.subheadline = `on ${data.headline}`
 					config.coupon_code = data.duration || data.dates || 'BOOK NOW'
-					config.coupon_label = 'Starting From:'
+					config.coupon_label = 'Duration:'
 					config.features = [
-						{ icon: '\u2713', text: data.includes?.split('|')[0]?.trim() || 'Premium\nExperience' },
-						{ icon: '\u21BB', text: 'Free Cancellation\nAvailable' },
+						{ icon: '\u2713', text: data.includes?.split('|')[0]?.trim() || 'Premium Stay' },
+						{ icon: '\u2302', text: 'Free Cancellation\nAvailable' },
 						{ icon: '\u2605', text: 'Verified Reviews\n& Ratings' },
 						{ icon: '\u25A3', text: 'Real Photos\nby Guests' },
-						{ icon: '\u260E', text: `Contact Us\n${data.contact?.split('|')[0]?.trim() || 'Anytime'}` },
+						{ icon: '\u25C9', text: `Contact\n${data.contact?.split('|')[0]?.trim() || ''}` },
 					]
 					break
 				case 'phone-mockup':
 					config.headline = data.headline
-					config.subheadline = `Book your ${data.headline} trip today!`
+					config.subheadline = data.subheadline || `Book your ${data.headline} trip today!`
 					config.accent_bars = [[37, 99, 235], [220, 38, 38]]
 					config.phone_image = localPaths.length > 1 ? localPaths[1] : localPaths[0]
 					break
@@ -787,13 +782,16 @@ Note: Using AI-generated imagery.`)
 					config.headline = `${data.headline} from ${data.price}`
 					config.subheadline = data.includes || 'Tours & Attractions'
 					config.coupon_code = data.duration || data.dates || ''
-					config.bg_texture = 'striped'
+					config.bg_texture = 'wood'
 					config.photos = allPhotoPaths
 					break
 				case 'minimal-cta':
 					config.headline = data.headline
-					config.subheadline = `Starting from ${data.price}`
+					config.subheadline = data.subheadline || data.tagline || ''
 					config.cta_text = 'Book Now'
+					config.coupon_code = data.price || ''
+					config.coupon_label = 'Starting From:'
+					config.headline_position = 'bottom'
 					break
 				default:
 					config.bg_type = 'image'
@@ -801,21 +799,12 @@ Note: Using AI-generated imagery.`)
 					break
 			}
 
-			// phone-mockup renders as landscape 16:9; all others use the requested ratio
-			// These templates render as landscape 16:9
-			const landscapeSlugs = ['phone-mockup', 'promo-collage', 'photo-board']
-			const templateAspect = landscapeSlugs.includes(template.slug)
-				? '16:9' as const
-				: (aspectRatio === 'auto' ? '4:5' : aspectRatio) as any
-
-			logger.info(`[py-template] Rendering ${template.slug} aspect=${templateAspect} bg=${bgImagePath} photos=${(config.photos as string[] || []).length}`)
-
 			const outputBuffer = await pythonTemplateRenderer.render({
 				template: template.slug as any,
 				config,
 				base_image: bgImagePath,
 				format: 'PNG',
-				aspect_ratio: templateAspect,
+				aspect_ratio: aspectRatio === 'auto' ? '4:5' : aspectRatio,
 			})
 
 			let url: string

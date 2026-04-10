@@ -61,9 +61,8 @@ class PhotoBoardTemplate(BaseTemplate):
         elif bg_texture == "striped":
             canvas = Effects.striped_background(
                 self.w, self.h,
-                bg_color=_parse_color(config.get("bg_color"), (205, 218, 232)),
-                stripe_color=(190, 200, 215, 25),
-                spacing=50,
+                bg_color=_parse_color(config.get("bg_color"), (210, 220, 230)),
+                stripe_color=(190, 200, 210, 50),
             )
         else:
             bg_c = _parse_color(config.get("bg_color"), (230, 225, 215))
