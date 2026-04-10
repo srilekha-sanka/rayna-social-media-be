@@ -572,6 +572,9 @@ class AnalyticsService {
 
 		// Build post filter
 		const postWhere: WhereOptions = { status: 'PUBLISHED', is_active: true }
+		if (platform) {
+			postWhere.platforms = { [Op.contains]: [platform] }
+		}
 		if (from || to) {
 			const dateFilter: any = {}
 			if (from) dateFilter[Op.gte] = new Date(from)

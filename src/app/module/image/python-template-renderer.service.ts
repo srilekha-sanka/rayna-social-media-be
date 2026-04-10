@@ -18,7 +18,7 @@ export interface PythonRenderRequest {
 	base_image?: string        // absolute path to background image
 	output?: string            // output file path (auto-generated if omitted)
 	format?: 'PNG' | 'JPEG'
-	aspect_ratio?: '4:5' | '1:1' | '1.91:1'
+	aspect_ratio?: '4:5' | '1:1' | '1.91:1' | '16:9'
 }
 
 interface PythonRenderResult {
@@ -115,22 +115,28 @@ class PythonTemplateRendererService {
 
 	private exec(payload: PythonRenderRequest): Promise<PythonRenderResult> {
 		return new Promise((resolve, reject) => {
+			logger.info(`[py-render] Spawning: ${PYTHON_BIN} ${RENDER_SCRIPT} template=${payload.template} aspect=${payload.aspect_ratio}`)
 			const child = execFile(
 				PYTHON_BIN,
 				[RENDER_SCRIPT],
 				{ timeout: RENDER_TIMEOUT_MS, maxBuffer: 10 * 1024 * 1024 },
 				(err, stdout, stderr) => {
 					if (stderr) {
-						logger.warn(`Python stderr: ${stderr.slice(0, 500)}`)
+						logger.warn(`[py-render] stderr: ${stderr.slice(0, 800)}`)
 					}
 					if (err) {
-						logger.error(`Python render process error: ${err.message}`)
-						return resolve({ ok: false, error: err.message })
+						const errAny = err as any
+						const detail = stderr
+							? stderr.slice(0, 800)
+							: `${err.message} (killed=${errAny.killed}, signal=${errAny.signal}, code=${errAny.code})`
+						logger.error(`[py-render] FAILED: ${detail}`)
+						return resolve({ ok: false, error: detail })
 					}
 					try {
 						const result: PythonRenderResult = JSON.parse(stdout)
 						resolve(result)
 					} catch (e) {
+						logger.error(`[py-render] Bad JSON: stdout=${stdout.slice(0, 300)} stderr=${(stderr || '').slice(0, 300)}`)
 						resolve({ ok: false, error: `Invalid JSON from Python: ${stdout.slice(0, 200)}` })
 					}
 				},
