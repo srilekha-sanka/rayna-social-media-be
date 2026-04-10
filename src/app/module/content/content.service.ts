@@ -9,6 +9,7 @@ import Campaign from '../campaign/campaign.model'
 import User from '../user/user.model'
 import { aiService } from '../ai/ai.service'
 import { imageOverlayService, AspectRatio, PosterConfig } from '../image/image-overlay.service'
+import { pythonTemplateRenderer } from '../image/python-template-renderer.service'
 import { cloudinaryService } from '../cloudinary/cloudinary.service'
 import { freepikService } from '../freepik/freepik.service'
 import CalendarEntry from '../content-studio/calendar-entry.model'
@@ -750,15 +751,157 @@ Note: Using AI-generated imagery.`)
 	}): Promise<string[]> {
 		const { image_urls, template, entry, product, poster_data } = input
 		const data = poster_data || buildPosterData(entry, product)
-
-		const slug = template.slug.toLowerCase()
-		const layout = (slug.startsWith('heritage') ? 'heritage' :
-			slug.startsWith('bold') ? 'bold-adventure' :
-				slug.startsWith('explorer') ? 'explorer' :
-					slug.startsWith('lifestyle') ? 'lifestyle' : 'brush-script') as any
 		const aspectRatio = resolveAspectRatio(entry.platform, entry.post_type)
 
-		// For lifestyle-editorial: generate a short editorial tagline + description via AI
+		// ── Route: Python (Pillow) vs HTML (Puppeteer) ───────────────
+		if (template.renderer === 'python') {
+			return this.applyPythonTemplate(image_urls, template, data, aspectRatio)
+		}
+
+		return this.applyHtmlTemplate(image_urls, template, data, aspectRatio, entry, product)
+	}
+
+	// ── Python / Pillow renderer ────────────────────────────────────
+
+	private async applyPythonTemplate(
+		image_urls: string[],
+		template: DesignTemplate,
+		data: Record<string, string>,
+		aspectRatio: AspectRatio,
+	): Promise<string[]> {
+		const logoPath = path.join(__dirname, '../../../../assets/rayna-logo.png')
+		const hasLogo = fs.existsSync(logoPath)
+
+		// Download ALL product images to local files
+		const localPaths: string[] = []
+		for (let i = 0; i < image_urls.length; i++) {
+			try {
+				const p = await this.downloadImage(image_urls[i], `py-src-${i}`)
+				localPaths.push(p)
+			} catch (err: any) {
+				logger.warn(`Failed to download image ${i}: ${err.message}`)
+			}
+		}
+
+		if (localPaths.length === 0) {
+			logger.error('No images available for Python template render')
+			return []
+		}
+
+		const bgImagePath = localPaths[0]
+		const allPhotoPaths = localPaths.slice(0)
+
+		try {
+			const config: Record<string, unknown> = {
+				headline: data.headline,
+				subheadline: data.subheadline || data.tagline || '',
+				coupon_code: data.price || '',
+				coupon_label: 'Starting From:',
+				logo_path: hasLogo ? logoPath : '',
+				accent_color: [234, 88, 12],
+				tc_text: '*T&C apply',
+			}
+
+			switch (template.slug) {
+				case 'promo-collage':
+					config.headline = `Get up to 20% OFF*`
+					config.subheadline = `on ${data.headline}`
+					config.coupon_code = data.price || 'RAYNOW'
+					config.coupon_label = 'Starting From:'
+					config.bg_type = 'image'
+					config.photos = allPhotoPaths
+					break
+				case 'hotel-feature':
+					config.pre_headline = `For that Dream Trip:`
+					config.headline = `GRAB UP TO\n${data.price}`
+					config.subheadline = `on ${data.headline}`
+					config.coupon_code = data.duration || data.dates || 'BOOK NOW'
+					config.coupon_label = 'Duration:'
+					config.features = [
+						{ icon: '\u2713', text: data.includes?.split('|')[0]?.trim() || 'Premium Stay' },
+						{ icon: '\u2302', text: 'Free Cancellation\nAvailable' },
+						{ icon: '\u2605', text: 'Verified Reviews\n& Ratings' },
+						{ icon: '\u25A3', text: 'Real Photos\nby Guests' },
+						{ icon: '\u25C9', text: `Contact\n${data.contact?.split('|')[0]?.trim() || ''}` },
+					]
+					break
+				case 'phone-mockup':
+					config.headline = data.headline
+					config.subheadline = data.subheadline || `Book your ${data.headline} trip today!`
+					config.accent_bars = [[37, 99, 235], [220, 38, 38]]
+					config.phone_image = localPaths.length > 1 ? localPaths[1] : localPaths[0]
+					break
+				case 'photo-board':
+					config.headline = `${data.headline} from ${data.price}`
+					config.subheadline = data.includes || 'Tours & Attractions'
+					config.coupon_code = data.duration || data.dates || ''
+					config.bg_texture = 'wood'
+					config.photos = allPhotoPaths
+					break
+				case 'minimal-cta':
+					config.headline = data.headline
+					config.subheadline = data.subheadline || data.tagline || ''
+					config.cta_text = 'Book Now'
+					config.coupon_code = data.price || ''
+					config.coupon_label = 'Starting From:'
+					config.headline_position = 'bottom'
+					break
+				default:
+					config.bg_type = 'image'
+					config.photos = allPhotoPaths
+					break
+			}
+
+			const outputBuffer = await pythonTemplateRenderer.render({
+				template: template.slug as any,
+				config,
+				base_image: bgImagePath,
+				format: 'PNG',
+				aspect_ratio: aspectRatio === 'auto' ? '4:5' : aspectRatio,
+			})
+
+			let url: string
+			if (cloudinaryService.enabled) {
+				const uploaded = await cloudinaryService.uploadBuffer(outputBuffer, { folder: 'rayna/designed-posters' })
+				url = uploaded.secure_url
+			} else {
+				const fileName = `py-poster-${Date.now()}.png`
+				const destPath = path.join(PROCESSED_DIR, fileName)
+				fs.writeFileSync(destPath, outputBuffer)
+				url = `/uploads/processed/${fileName}`
+			}
+
+			return [url]
+		} finally {
+			for (const p of localPaths) this.cleanup(p)
+		}
+	}
+
+	// ── HTML / Puppeteer renderer ───────────────────────────────────
+
+	private async applyHtmlTemplate(
+		image_urls: string[],
+		template: DesignTemplate,
+		data: Record<string, string>,
+		aspectRatio: AspectRatio,
+		entry: CalendarEntry,
+		product?: Product,
+	): Promise<string[]> {
+		const slug = template.slug.toLowerCase()
+		const layout = (
+			slug.startsWith('heritage') ? 'heritage' :
+				slug.startsWith('lifestyle') ? 'lifestyle' :
+					slug.startsWith('adventure') ? 'bold-adventure' :
+						slug.startsWith('explorer') ? 'explorer' :
+							slug.startsWith('luxury') ? 'luxury' :
+								slug.startsWith('promo') ? 'promo' :
+									slug.startsWith('nature') ? 'nature' :
+										slug.startsWith('culinary') ? 'culinary' :
+											slug.startsWith('city') ? 'city' :
+												slug.startsWith('family') ? 'family' :
+													slug.startsWith('collage') ? 'collage' : 'brush-script'
+		) as any
+
 		let lifestyleTagline = data.tagline
 		let lifestyleDesc = data.subheadline
 		if (template.slug === 'lifestyle-editorial') {
@@ -803,7 +946,6 @@ RULES:
 
 			let edited: Buffer
 
-			// Lifestyle Editorial: AI adds human FIRST on raw image, then overlay text on top
 			if (template.slug === 'lifestyle-editorial') {
 				console.log('>>> Lifestyle editorial: calling Flux Kontext Pro to add human traveler...')
 				const enhanced = await aiService.editImage({

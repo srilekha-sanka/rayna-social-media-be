@@ -43,57 +43,112 @@ class AnalyticsService {
 		}
 
 		try {
-			// 1. Get all platform results for this post
+			// 1. Get post results to know which platforms + platform_post_ids
 			const results = await postForMeService.getPostResults(post.postforme_post_id)
 
 			if (!results.data?.length) {
 				return { statusCode: 200, payload: [], message: 'No platform results found for this post' }
 			}
 
+			// 2. Build a map of account feeds (fetch once per account, not per result)
+			const accountFeedCache = new Map<string, any[]>()
+
 			const synced: PostAnalytics[] = []
 
 			for (const result of results.data) {
 				if (!result.success) continue
 
-				// 2. Get detailed analytics for each platform result
-				let analytics: any = {}
-				try {
-					const details = await postForMeService.getPostResultDetails(result.id)
-					analytics = details.analytics || {}
-				} catch (err: any) {
-					logger.warn(`Could not fetch analytics for result ${result.id}: ${err.message}`)
-					// Fall back to whatever is in details
-					analytics = (result.details as any) || {}
-				}
-
-				// 3. Resolve the local social account from PFM account ID
+				// 3. Resolve local social account
 				const socialAccount = await SocialAccount.findOne({
 					where: { postforme_account_id: result.social_account_id, is_active: true },
 				})
 
 				const platform = socialAccount?.platform || 'unknown'
+				const platformPostId = result.platform_data?.id || null
+				const platformPostUrl = result.platform_data?.url || null
+
+				// 4. Fetch account feed with metrics (cached per account)
+				let analytics: any = {}
+
+				if (socialAccount?.postforme_account_id) {
+					const pfmAccountId = socialAccount.postforme_account_id
+
+					if (!accountFeedCache.has(pfmAccountId)) {
+						try {
+							const feed = await postForMeService.getAccountFeed(pfmAccountId, {
+								limit: 100,
+								expand: ['metrics'],
+							})
+							logger.info(`[Analytics] Fetched feed for account ${pfmAccountId} (${platform}): ${feed?.data?.length || 0} items`)
+							accountFeedCache.set(pfmAccountId, feed?.data || [])
+						} catch (err: any) {
+							logger.warn(`[Analytics] Failed to fetch feed for account ${pfmAccountId}: ${err.message}`)
+							accountFeedCache.set(pfmAccountId, [])
+						}
+					}
+
+					// 5. Match the feed item by platform_post_id or URL
+					const feedItems = accountFeedCache.get(pfmAccountId) || []
+					const matchingItem = feedItems.find((item: any) => {
+						if (platformPostId && item.platform_post_id === platformPostId) return true
+						if (platformPostId && item.id === platformPostId) return true
+						if (platformPostUrl && item.url && platformPostUrl === item.url) return true
+						// Partial URL match (Instagram shortcode etc.)
+						if (platformPostUrl && item.url) {
+							const urlParts = platformPostUrl.split('/')
+							const shortcode = urlParts[urlParts.length - 2] || urlParts[urlParts.length - 1]
+							if (shortcode && item.url.includes(shortcode)) return true
+						}
+						return false
+					})
+
+					if (matchingItem) {
+						analytics = matchingItem.metrics || matchingItem
+						logger.info(`[Analytics] Matched feed item for ${platform}: ${JSON.stringify(analytics)}`)
+					} else {
+						logger.warn(`[Analytics] No matching feed item for platform_post_id=${platformPostId}, url=${platformPostUrl}`)
+						// Log first 3 feed items for debugging
+						logger.info(`[Analytics] Available feed items (first 3): ${JSON.stringify(feedItems.slice(0, 3).map((i: any) => ({ id: i.id, platform_post_id: i.platform_post_id, url: i.url })))}`)
+					}
+				}
+
+				// 6. Fallback: try result details endpoint
+				if (!analytics.likes && !analytics.comments) {
+					try {
+						const details = await postForMeService.getPostResultDetails(result.id)
+						if (details.analytics && (details.analytics.likes || details.analytics.comments)) {
+							analytics = details.analytics
+						} else if (result.details) {
+							const d = result.details as any
+							if (d.likes || d.comments) analytics = d
+						}
+					} catch {
+						// Already logged, skip
+					}
+				}
+
 				const totalEngagement = (analytics.likes || 0) + (analytics.comments || 0) + (analytics.shares || 0)
 				const engagementRate =
 					analytics.engagement_rate ??
 					(analytics.impressions > 0 ? (totalEngagement / analytics.impressions) * 100 : 0)
 
-				// 4. Upsert: update if exists, create if not
+				// 7. Upsert into DB
 				const [record] = await PostAnalytics.upsert(
 					{
 						post_id: postId,
 						platform,
 						social_account_id: socialAccount?.id || null,
-						platform_post_id: result.platform_data?.id || null,
-						platform_post_url: result.platform_data?.url || null,
-						likes: analytics.likes || 0,
-						comments: analytics.comments || 0,
-						shares: analytics.shares || 0,
-						saves: analytics.saves || 0,
+						platform_post_id: platformPostId,
+						platform_post_url: platformPostUrl,
+						likes: analytics.likes || analytics.like_count || 0,
+						comments: analytics.comments || analytics.comments_count || 0,
+						shares: analytics.shares || analytics.share_count || 0,
+						saves: analytics.saves || analytics.saved || analytics.save_count || 0,
 						reach: analytics.reach || 0,
 						impressions: analytics.impressions || 0,
 						clicks: analytics.clicks || 0,
 						engagement_rate: Math.round(engagementRate * 100) / 100,
-						video_views: analytics.video_views || 0,
+						video_views: analytics.video_views || analytics.views || analytics.play_count || 0,
 						watch_time_seconds: analytics.watch_time_seconds || 0,
 						raw_metrics: analytics,
 						last_synced_at: new Date(),
