@@ -22,6 +22,15 @@ class ProductController extends ResponseService {
 		}
 	}
 
+	getProductTypes = async (_req: Request, res: Response, next: NextFunction) => {
+		try {
+			const { statusCode, payload, message } = await productService.getDistinctProductTypes()
+			return this.sendResponse(res, statusCode, payload, message)
+		} catch (err) {
+			next(err)
+		}
+	}
+
 	findAll = async (req: Request, res: Response, next: NextFunction) => {
 		try {
 			const { error, value } = productListQuerySchema.validate(req.query, { abortEarly: false, stripUnknown: true })

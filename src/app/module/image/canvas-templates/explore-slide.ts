@@ -214,7 +214,10 @@ export async function renderExploreSlide(
 
 	if (config.photo) {
 		try {
-			const photo = await loadImage(config.photo)
+			const exists = fs.existsSync(config.photo)
+			console.log(`[explore-slide] Photo: path=${config.photo}, exists=${exists}, size=${exists ? fs.statSync(config.photo).size : 0}`)
+			const buf = fs.readFileSync(config.photo)
+			const photo = await loadImage(buf)
 			ctx.save()
 			Effects.roundedRectPath(ctx, photoX, photoY, photoW, photoH, photoR)
 			ctx.clip()
@@ -234,7 +237,8 @@ export async function renderExploreSlide(
 			const dy = photoY + (photoH - dh) / 2
 			ctx.drawImage(photo, dx, dy, dw, dh)
 			ctx.restore()
-		} catch {
+		} catch (err: any) {
+			console.error(`[explore-slide] Failed to load photo: ${config.photo}`, err.message)
 			ctx.save()
 			ctx.fillStyle = '#d9d9d9'
 			Effects.roundedRectPath(ctx, photoX, photoY, photoW, photoH, photoR)

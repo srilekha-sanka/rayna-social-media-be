@@ -563,7 +563,35 @@ Generate a bold, clean, premium Instagram travel poster with:
 		sort_order: 6,
 	},
 
-	// ─── 7. Explore Slide (Canvas) ────────────────────────────
+	// ─── 7. Explore Destinations (Canvas) ─────────────────────
+	{
+		name: 'Explore Destinations',
+		slug: 'explore-destinations',
+		renderer: 'canvas' as const,
+		description: 'Carousel cover slide: blue-to-white gradient with three tall destination photo cards, tilted plane image, bird silhouettes, and blue gradient CTA pill. First page of a destination carousel.',
+		media_type: 'image' as const,
+		prompt_config: {
+			design_prompt: 'Canvas/Skia template: blue-to-white header gradient, three tall rounded destination photo cards with title/subtitle labels, tilted plane image, bird silhouettes, and "Explore. Experience. Enjoy." blue gradient CTA pill button.',
+			dynamic_fields: ['headlineText', 'photos', 'bgPhoto', 'cardLabels', 'website'],
+		},
+		sort_order: 7,
+	},
+
+	// ─── 8. Explore Destination Slide (Canvas) ────────────────
+	{
+		name: 'Explore Destination Slide',
+		slug: 'explore-destination-slide',
+		renderer: 'canvas' as const,
+		description: 'Carousel item slide for destinations: blue sky background with clouds, single large square photo card, destination name pill, and activities row. Used for slides 2+ in the explore-destinations carousel.',
+		media_type: 'image' as const,
+		prompt_config: {
+			design_prompt: 'Canvas/Skia template: blue sky gradient with cloud decorations, single large square photo card (832×832, white border, rounded), destination name in blue gradient pill, activities row with dividers.',
+			dynamic_fields: ['title', 'activities', 'photo', 'website'],
+		},
+		sort_order: 8,
+	},
+
+	// ─── 9. Explore Slide (Canvas) ────────────────────────────
 	{
 		name: 'Explore Slide',
 		slug: 'explore-slide',
@@ -574,7 +602,7 @@ Generate a bold, clean, premium Instagram travel poster with:
 			design_prompt: 'Canvas/Skia template: off-white gradient background with clouds and birds, single large photo card with grey border and white inner frame, location badge overlay, dark title tag, and centered subtitle.',
 			dynamic_fields: ['title', 'subtitle', 'locationBadge', 'photo', 'website'],
 		},
-		sort_order: 7,
+		sort_order: 9,
 	},
 ]
 

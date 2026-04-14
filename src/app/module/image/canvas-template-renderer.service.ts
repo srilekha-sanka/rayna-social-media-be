@@ -17,6 +17,7 @@ import { renderTravelPoster, type TravelPosterConfig } from './canvas-templates/
 import { renderTourTravel, type TourTravelConfig } from './canvas-templates/tour-and-travel'
 import { renderExploreActivities, type ExploreActivitiesConfig } from './canvas-templates/explore-activities'
 import { renderExploreSlide, type ExploreSlideConfig } from './canvas-templates/explore-slide'
+import { renderExploreDestinations, type ExploreDestinationsConfig, renderExploreDestinationSlide, type ExploreDestinationSlideConfig } from './canvas-templates/explore-destinations'
 // Logger: use console as fallback, wire up project logger when integrated into src/
 const logger = {
 	info: (...args: unknown[]) => console.log('[canvas]', ...args),
@@ -31,10 +32,8 @@ export type CanvasTemplateName =
 	| 'tour-and-travel'
 	| 'explore-activities'
 	| 'explore-slide'
-	// Add new canvas templates here as you port them:
-	// | 'minimal-cta'
-	// | 'promo-collage'
-	// | 'hotel-feature'
+	| 'explore-destinations'
+	| 'explore-destination-slide'
 
 export interface CanvasRenderRequest {
 	template: CanvasTemplateName
@@ -65,6 +64,12 @@ const TEMPLATE_REGISTRY: Record<CanvasTemplateName, TemplateRenderFn> = {
 	},
 	'explore-slide': async (config, dims) => {
 		return renderExploreSlide(config as unknown as ExploreSlideConfig, dims)
+	},
+	'explore-destinations': async (config, dims) => {
+		return renderExploreDestinations(config as unknown as ExploreDestinationsConfig, dims)
+	},
+	'explore-destination-slide': async (config, dims) => {
+		return renderExploreDestinationSlide(config as unknown as ExploreDestinationSlideConfig, dims)
 	},
 }
 

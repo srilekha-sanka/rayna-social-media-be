@@ -35,6 +35,7 @@ const FONT_MAP: Record<string, { file: string; family: string }> = {
 	'dm-sans':       { file: 'DMSans-Regular.woff',          family: 'DM Sans' },
 	'dm-sans-medium':{ file: 'DMSans-Medium.woff',           family: 'DM Sans' },
 	'dm-sans-bold':  { file: 'DMSans-Bold.woff',             family: 'DM Sans' },
+	'dela-gothic':   { file: 'DelaGothicOne-Regular.ttf',   family: 'Dela Gothic One' },
 }
 
 let fontsRegistered = false
@@ -89,6 +90,7 @@ export const FONT_PRESETS: Record<string, { name: string; weight: number }> = {
 	'dm-sans':             { name: 'dm-sans', weight: 400 },
 	'dm-sans-medium':      { name: 'dm-sans', weight: 500 },
 	'dm-sans-bold':        { name: 'dm-sans', weight: 700 },
+	'dela-gothic':         { name: 'dela-gothic', weight: 400 },
 }
 
 /** Resolve a preset name (like 'montserrat-black') to a CSS font string */

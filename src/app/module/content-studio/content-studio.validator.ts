@@ -32,6 +32,7 @@ export const generatePlanSchema = Joi.object({
 	end_date: Joi.string().isoDate().required(),
 	platforms: Joi.array().items(Joi.string().valid(...VALID_PLATFORMS)).min(1).required(),
 	product_ids: Joi.array().items(Joi.string().uuid()).optional(),
+	product_type: Joi.string().optional().trim().lowercase(),
 	include_festivals: Joi.boolean().default(true),
 	include_engagement: Joi.boolean().default(true),
 	posts_per_day: Joi.number().integer().min(1).max(5).default(1),
@@ -56,6 +57,7 @@ export const generatePlanSchema = Joi.object({
 export const generateEntriesSchema = Joi.object({
 	platforms: Joi.array().items(Joi.string().valid(...VALID_PLATFORMS)).min(1).required(),
 	product_ids: Joi.array().items(Joi.string().uuid()).optional(),
+	product_type: Joi.string().optional().trim().lowercase(),
 	include_festivals: Joi.boolean().default(true),
 	include_engagement: Joi.boolean().default(true),
 	posts_per_day: Joi.number().integer().min(1).max(5).default(1),

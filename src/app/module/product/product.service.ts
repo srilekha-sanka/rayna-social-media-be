@@ -148,6 +148,23 @@ class ProductService {
 		return { statusCode: 200, payload: null, message: 'Product deleted successfully' }
 	}
 
+	async getDistinctProductTypes(): Promise<IServiceResponse> {
+		const results = await Product.findAll({
+			attributes: [[Product.sequelize!.fn('DISTINCT', Product.sequelize!.col('product_type')), 'product_type']],
+			where: { is_active: true, product_type: { [Op.ne]: null } },
+			order: [['product_type', 'ASC']],
+			raw: true,
+		})
+
+		const productTypes = results.map((r: any) => r.product_type).filter(Boolean)
+
+		return {
+			statusCode: 200,
+			payload: { product_types: productTypes },
+			message: 'Product types fetched successfully',
+		}
+	}
+
 	async bulkCreate(
 		products: Array<{
 			name: string

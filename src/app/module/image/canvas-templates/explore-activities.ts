@@ -210,7 +210,11 @@ async function drawCard(ctx: SKRSContext2D, card: CardDef, photoPath?: string): 
 	// ── 3. Photo inside card ──
 	if (photoPath) {
 		try {
-			const photo = await loadImage(photoPath)
+			const exists = fs.existsSync(photoPath)
+			const size = exists ? fs.statSync(photoPath).size : 0
+			fs.appendFileSync('/tmp/rayna-canvas-debug.log', `[explore-activities] Card photo: path=${photoPath}, exists=${exists}, size=${size}\n`)
+			const buf = fs.readFileSync(photoPath)
+			const photo = await loadImage(buf)
 			ctx.save()
 			ctx.translate(card.innerCX, card.innerCY)
 			ctx.rotate(rot)
@@ -232,7 +236,8 @@ async function drawCard(ctx: SKRSContext2D, card: CardDef, photoPath?: string): 
 			}
 			ctx.drawImage(photo, -dw / 2, -dh / 2, dw, dh)
 			ctx.restore()
-		} catch {
+		} catch (err: any) {
+			fs.appendFileSync('/tmp/rayna-canvas-debug.log', `[explore-activities] FAILED to load card photo: ${photoPath} — ${err.message}\n`)
 			ctx.save()
 			ctx.translate(card.innerCX, card.innerCY)
 			ctx.rotate(rot)

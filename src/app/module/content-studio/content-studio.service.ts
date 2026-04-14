@@ -19,6 +19,7 @@ interface GeneratePlanInput {
 	end_date: string
 	platforms: string[]
 	product_ids?: string[]
+	product_type?: string
 	include_festivals: boolean
 	include_engagement: boolean
 	posts_per_day: number
@@ -79,7 +80,7 @@ class ContentStudioService {
 	// --- Async Plan Generation ---
 
 	async generatePlan(input: GeneratePlanInput, userId: string): Promise<IServiceResponse> {
-		const products = await this.fetchProducts(input.product_ids)
+		const products = await this.fetchProducts(input.product_ids, input.product_type)
 		if (!products.length) throw new BadRequestError('No products found. At least one product is required.')
 
 		const plan = await ContentPlan.create({
@@ -92,6 +93,7 @@ class ContentStudioService {
 			generation_config: {
 				platforms: input.platforms,
 				product_ids: input.product_ids,
+				product_type: input.product_type,
 				include_festivals: input.include_festivals,
 				include_engagement: input.include_engagement,
 				posts_per_day: input.posts_per_day,
@@ -120,7 +122,9 @@ class ContentStudioService {
 		const plan = await ContentPlan.findByPk(planId)
 		if (!plan) throw new NotFoundError('Content plan not found')
 
-		const products = await this.fetchProducts(input.product_ids)
+		const genConfig = plan.generation_config as { product_type?: string } | null
+		const productType = (input as any).product_type || genConfig?.product_type
+		const products = await this.fetchProducts(input.product_ids, productType)
 		if (!products.length) throw new BadRequestError('No products found to generate content.')
 
 		const jobId = `fill-${planId}-${Date.now()}`
@@ -176,17 +180,53 @@ class ContentStudioService {
 		let mediaUrls: string[] = data?.media_urls || []
 
 		// Templates that need multiple images override the requested count
-		const multiImageSlugs = ['promo-collage', 'photo-board', 'explore-activities']
+		const multiImageSlugs = ['promo-collage', 'photo-board']
 		const numImages = multiImageSlugs.includes(template.slug)
 			? 4
 			: (data?.num_images || 1)
 
-		// Step 1: Get base images from the chosen source
-		if (contentSource === 'PRODUCT') {
-			const genConfig = entry.content_plan?.generation_config as { product_ids?: string[] } | null
+		// Detect if this is a mixed carousel entry (multiple products in one carousel)
+		const isMixedCarousel = entry.description?.includes('MIXED_CAROUSEL')
+		const genConfig = entry.content_plan?.generation_config as {
+			product_ids?: string[]; product_type?: string
+		} | null
+
+		let mixedProducts: Product[] = []
+
+		// For explore-activities/destinations or mixed carousels, fetch all plan products
+		// and take exactly ONE image per product (the main/first image).
+		const isExploreCarousel = template.slug === 'explore-activities' || template.slug === 'explore-destinations'
+		const needsMultiProductImages = (isMixedCarousel || isExploreCarousel) && contentSource === 'PRODUCT'
+
+		if (needsMultiProductImages) {
+			mixedProducts = await this.fetchMixedCarouselProducts(genConfig)
+
+			if (mixedProducts.length > 0) {
+				// Strictly ONE image per product — the first (main) image
+				mediaUrls = mixedProducts
+					.filter((p) => p.image_urls?.length)
+					.map((p) => p.image_urls[0])
+				console.log(`[compose-debug] Multi-product images: ${mixedProducts.length} products → ${mediaUrls.length} images (1 per product)`)
+			}
+		}
+
+		// Step 1: Get base images from the chosen source (single-product fallback)
+		if (!mediaUrls.length && contentSource === 'PRODUCT') {
 			if (!entry.product_id && genConfig?.product_ids?.length) {
 				const productIds = genConfig.product_ids
 				const product = await Product.findOne({ where: { id: { [Op.in]: productIds }, is_active: true } })
+				if (product) {
+					await entry.update({ product_id: product.id })
+					entry.product_id = product.id
+					entry.product = product
+				}
+			}
+			// Also try product_type fallback when no product_id is available
+			if (!entry.product_id && genConfig?.product_type) {
+				const product = await Product.findOne({
+					where: { product_type: genConfig.product_type, is_active: true },
+					order: [['created_at', 'DESC']],
+				})
 				if (product) {
 					await entry.update({ product_id: product.id })
 					entry.product_id = product.id
@@ -197,13 +237,15 @@ class ContentStudioService {
 				entry.product = await Product.findByPk(entry.product_id) as Product
 			}
 			if (entry.product?.image_urls?.length) {
-				mediaUrls = entry.product.image_urls.slice(0, numImages)
+				// For explore carousels: only take 1 image per product (not multiple from same product)
+				const imageCount = isExploreCarousel ? 1 : numImages
+				mediaUrls = entry.product.image_urls.slice(0, imageCount)
 			}
-		} else if (contentSource === 'STOCK') {
+		} else if (!mediaUrls.length && contentSource === 'STOCK') {
 			if (data?.stock_image_urls?.length) {
 				mediaUrls = data.stock_image_urls
 			}
-		} else if (contentSource === 'AI_GENERATED') {
+		} else if (!mediaUrls.length && contentSource === 'AI_GENERATED') {
 			if (entry.product_id && (!entry.product || !entry.product.image_urls)) {
 				entry.product = await Product.findByPk(entry.product_id) as Product
 			}
@@ -213,15 +255,27 @@ class ContentStudioService {
 		}
 
 		if (!mediaUrls.length) {
+			const fsDbg = require('fs')
+			fsDbg.appendFileSync('/tmp/rayna-canvas-debug.log', `[compose-FAIL] NO IMAGES! isMixedCarousel=${isMixedCarousel}, isExploreCarousel=${isExploreCarousel}, needsMultiProductImages=${needsMultiProductImages}, mixedProducts=${mixedProducts.length}, genConfig=${JSON.stringify(genConfig)?.substring(0, 200)}, entry.product_id=${entry.product_id}, contentSource=${contentSource}\n`)
 			throw new BadRequestError('No base images available to apply design template')
 		}
 
-		// Step 2: Apply design template via OpenAI image editing
+		const fs = require('fs')
+		const composeDebug = [
+			`[compose-debug] mediaUrls count=${mediaUrls.length}, first=${mediaUrls[0]?.substring(0, 80)}...`,
+			`[compose-debug] mixedProducts=${mixedProducts.length}, isMixedCarousel=${isMixedCarousel}`,
+			`[compose-debug] template=${template.slug}, entry.product_id=${entry.product_id}`,
+			`[compose-debug] genConfig=${JSON.stringify(genConfig)?.substring(0, 200)}`,
+		]
+		fs.appendFileSync('/tmp/rayna-canvas-debug.log', composeDebug.join('\n') + '\n')
+
+		// Step 2: Apply design template
 		mediaUrls = await contentService.applyDesignTemplate({
 			image_urls: mediaUrls,
 			template,
 			entry,
 			product: entry.product || undefined,
+			products: mixedProducts.length > 1 ? mixedProducts : undefined,
 			additional_prompt: data?.ai_image_prompt,
 		})
 
@@ -696,6 +750,15 @@ Note: Using AI-designed poster with "${template.name}" style.`)
 			template = found
 		}
 
+		// Auto-select explore-activities template for mixed carousels when no template specified
+		const isMixedEntry = entry.description?.includes('MIXED_CAROUSEL')
+		if (!template && isMixedEntry) {
+			const exploreTemplate = await DesignTemplate.findOne({
+				where: { slug: 'explore-activities', is_active: true },
+			})
+			if (exploreTemplate) template = exploreTemplate
+		}
+
 		// ── If template selected → run as async job (OpenAI image edit takes 20-40s) ──
 		if (template) {
 			const jobId = `compose-${entryId}-${Date.now()}`
@@ -714,33 +777,69 @@ Note: Using AI-designed poster with "${template.name}" style.`)
 
 		// ── No template → synchronous flow (existing behavior) ──
 
+		const isMixedCarouselEntry = entry.description?.includes('MIXED_CAROUSEL')
+		const planGenConfig = entry.content_plan?.generation_config as {
+			product_ids?: string[]; product_type?: string
+		} | null
+
 		// ── PRODUCT source ──
 		if (contentSource === 'PRODUCT') {
-			const genConfig = entry.content_plan?.generation_config as { product_ids?: string[] } | null
-			if (!entry.product_id && genConfig?.product_ids?.length) {
-				const productIds = genConfig.product_ids
-				const product = await Product.findOne({ where: { id: { [Op.in]: productIds }, is_active: true } })
-				if (product) {
-					await entry.update({ product_id: product.id })
-					entry.product_id = product.id
-					entry.product = product
+			// Mixed carousel: fetch all plan products and process one image per product
+			if (isMixedCarouselEntry && !mediaUrls.length) {
+				const mixedProducts = await this.fetchMixedCarouselProducts(planGenConfig)
+				if (mixedProducts.length > 1) {
+					const primaryProduct = mixedProducts[0]
+					const result = await contentService.processProductMedia({
+						product: primaryProduct,
+						platform: entry.platform,
+						slide_count: mixedProducts.length,
+					})
+					mediaUrls = result.media_urls
+					if (!aiCaption) aiCaption = result.ai_content.caption
+					if (!aiHashtags.length) aiHashtags = result.ai_content.hashtags
+					if (!aiCta) aiCta = result.ai_content.cta
 				}
 			}
 
-			if (entry.product_id && (!entry.product || !entry.product.image_urls)) {
-				entry.product = await Product.findByPk(entry.product_id) as Product
-			}
+			// Standard single-product flow
+			if (!mediaUrls.length) {
+				if (!entry.product_id && planGenConfig?.product_ids?.length) {
+					const productIds = planGenConfig.product_ids
+					const product = await Product.findOne({ where: { id: { [Op.in]: productIds }, is_active: true } })
+					if (product) {
+						await entry.update({ product_id: product.id })
+						entry.product_id = product.id
+						entry.product = product
+					}
+				}
+				// Fallback: resolve product from plan's product_type if no product_id
+				if (!entry.product_id && planGenConfig?.product_type) {
+					const product = await Product.findOne({
+						where: { product_type: planGenConfig.product_type, is_active: true },
+						order: [['created_at', 'DESC']],
+					})
+					if (product) {
+						await entry.update({ product_id: product.id })
+						entry.product_id = product.id
+						entry.product = product
+					}
+				}
 
-			if (entry.product_id && entry.product?.image_urls?.length && !mediaUrls.length) {
-				const result = await contentService.processProductMedia({
-					product: entry.product,
-					platform: entry.platform,
-					slide_count: entry.post_type === 'image' ? 1 : undefined,
-				})
-				mediaUrls = result.media_urls
-				if (!aiCaption) aiCaption = result.ai_content.caption
-				if (!aiHashtags.length) aiHashtags = result.ai_content.hashtags
-				if (!aiCta) aiCta = result.ai_content.cta
+				if (entry.product_id && (!entry.product || !entry.product.image_urls)) {
+					entry.product = await Product.findByPk(entry.product_id) as Product
+				}
+
+				if (entry.product_id && entry.product?.image_urls?.length) {
+					const result = await contentService.processProductMedia({
+						product: entry.product,
+						platform: entry.platform,
+						slide_count: entry.post_type === 'image' ? 1 : undefined,
+					})
+					mediaUrls = result.media_urls
+					if (!aiCaption) aiCaption = result.ai_content.caption
+					if (!aiHashtags.length) aiHashtags = result.ai_content.hashtags
+					if (!aiCta) aiCta = result.ai_content.cta
+				}
 			}
 		}
 
@@ -1221,14 +1320,35 @@ Note: Using AI-designed poster with "${template.name}" style.`)
 		return grouped
 	}
 
-	private async fetchProducts(productIds?: string[]): Promise<Product[]> {
+	private async fetchProducts(productIds?: string[], productType?: string): Promise<Product[]> {
 		const where: any = { is_active: true }
 		if (productIds?.length) where.id = { [Op.in]: productIds }
+		if (productType) where.product_type = productType
 		return Product.findAll({
 			where,
-			attributes: ['id', 'name', 'description', 'short_description', 'price', 'compare_at_price', 'currency', 'offer_label', 'category', 'city', 'image_urls', 'highlights'],
+			attributes: ['id', 'name', 'description', 'short_description', 'price', 'compare_at_price', 'currency', 'offer_label', 'category', 'city', 'country', 'image_urls', 'highlights', 'product_type'],
 			order: [['createdAt', 'DESC']],
-			limit: productIds?.length ? undefined : 50,
+			limit: (productIds?.length || productType) ? undefined : 50,
+		})
+	}
+
+	private async fetchMixedCarouselProducts(
+		genConfig: { product_ids?: string[]; product_type?: string } | null,
+	): Promise<Product[]> {
+		if (!genConfig) return []
+		const where: any = { is_active: true }
+		if (genConfig.product_ids?.length) {
+			where.id = { [Op.in]: genConfig.product_ids }
+		} else if (genConfig.product_type) {
+			where.product_type = genConfig.product_type
+		} else {
+			return []
+		}
+		return Product.findAll({
+			where,
+			attributes: ['id', 'name', 'description', 'short_description', 'price', 'currency', 'offer_label', 'category', 'city', 'country', 'image_urls', 'highlights', 'product_type'],
+			order: [['createdAt', 'DESC']],
+			limit: 10,
 		})
 	}
 
@@ -1256,6 +1376,13 @@ Note: Using AI-designed poster with "${template.name}" style.`)
 		let productIndex = 0
 		return entries.map((e) => {
 			const content_type = validContentTypes.includes(e.content_type) ? e.content_type : 'BRAND_AWARENESS'
+
+			// Skip product_id assignment for MIXED_CAROUSEL entries — they intentionally have no single product
+			const isMixedCarousel = e.description?.includes('MIXED_CAROUSEL')
+			if (isMixedCarousel) {
+				return { ...e, content_type, product_id: undefined }
+			}
+
 			const rawProductId = this.sanitizeProductId(e.product_id)
 			// Only accept product_id if it exists in the actual products list
 			let productId = rawProductId && validProductIds.has(rawProductId) ? rawProductId : undefined
@@ -1307,6 +1434,8 @@ Note: Using AI-designed poster with "${template.name}" style.`)
 			offer_label: p.offer_label,
 			category: p.category,
 			city: p.city,
+			country: (p as any).country,
+			product_type: (p as any).product_type,
 		}))
 
 		const campaignSummaries = campaigns.map((c) => ({
@@ -1322,9 +1451,16 @@ Note: Using AI-designed poster with "${template.name}" style.`)
 		const totalEntries = totalDays * input.platforms.length * input.posts_per_day
 		const isAllPostTypes = input.post_types.length === VALID_POST_TYPES.length
 
+		const hasMultipleProducts = products.length > 1
+		const includesCarousel = input.post_types.includes('carousel')
+
 		const postTypeRule = isAllPostTypes
 			? `- DAILY POST FORMAT ROTATION: Rotate post formats by day so each day has ONE dominant format across all platforms. Example: Day 1 = image, Day 2 = reel, Day 3 = carousel, Day 4 = story, Day 5 = cinematic_video, Day 6 = text, then repeat. All entries on the same day MUST use the same post_type. Available formats: ${VALID_POST_TYPES.join(', ')}.`
 			: `- Allowed post formats: ${input.post_types.join(', ')}. ONLY use these formats. All entries on a given day should use the same post_type from this list, rotating daily.`
+
+		const mixedCarouselRule = hasMultipleProducts && includesCarousel
+			? `\n- MIXED CAROUSEL RULE (MANDATORY): Since ${products.length} products are selected, AT LEAST 1 carousel entry MUST be a "mixed showcase" that features ALL selected products in a single carousel. Set product_id to null for this entry and include "MIXED_CAROUSEL" in the description. The description should say something like "Carousel showcasing a mix of: ${products.map((p) => p.name).slice(0, 5).join(', ')}". This carousel will display one slide per product with different photos.`
+			: ''
 
 		const systemPrompt = `You are a social media content strategist for Rayna Tours, Dubai's top tours & activities company.
 
@@ -1346,10 +1482,12 @@ RULES:
 ${postTypeRule}
 - TITLE RULE (STRICT): Every title MUST be EXACTLY 2 words and MUST include the product or place name (e.g. "Dubai Frame", "Desert Safari", "Burj Khalifa", "Museum Future"). For non-product posts, use the relevant place or attraction name. Never generate generic titles without a specific name.
 - Description = visual direction + copy angle + CTA + must match the post_type for that day
-- Platform rules: Instagram=visual+reels, TikTok=trends+hooks, Facebook=community+links, X=concise+witty, YouTube=SEO titles, LinkedIn=professional`
+- Platform rules: Instagram=visual+reels, TikTok=trends+hooks, Facebook=community+links, X=concise+witty, YouTube=SEO titles, LinkedIn=professional
+${input.product_type ? `- PRODUCT TYPE FOCUS: All products are "${input.product_type}". Tailor content strategy specifically for ${input.product_type} — use relevant vocabulary, visuals cues, and engagement tactics suited for ${input.product_type}. For carousel posts, plan to SHOWCASE MULTIPLE ${input.product_type} in a single post (mix of different products). Descriptions for carousels should mention featuring a variety of ${input.product_type}.` : ''}${mixedCarouselRule}`
 
 		const userPrompt = `Date range: ${input.start_date} to ${input.end_date} (${totalDays} days)
 Platforms: ${input.platforms.join(', ')} | Posts/day: ${input.posts_per_day} | Goal: ${input.primary_goal} | Language: ${input.language} | Format strategy: ${isAllPostTypes ? 'Rotate one format per day (image → reel → carousel → story → cinematic_video → text)' : input.post_types.join(', ')}
+${input.product_type ? `Product type focus: ${input.product_type} — generate content themed around this category` : ''}
 ${input.special_notes ? `Notes: ${input.special_notes}` : ''}
 
 Products: ${JSON.stringify(productSummaries)}
@@ -1359,7 +1497,37 @@ ${campaignSummaries.length ? `Active campaigns: ${JSON.stringify(campaignSummari
 Generate ${totalEntries} entries now.`
 
 		const result = await aiService.callOpenAIRaw<{ entries: AIPlanEntry[] }>(systemPrompt, userPrompt)
-		return this.sanitizeAIEntries(result.entries || [], products)
+		const sanitized = this.sanitizeAIEntries(result.entries || [], products)
+
+		// Post-processing: GUARANTEE at least 1 mixed carousel when multiple products selected
+		if (hasMultipleProducts && includesCarousel) {
+			const hasMixedCarousel = sanitized.some(
+				(e) => e.description?.includes('MIXED_CAROUSEL'),
+			)
+			if (!hasMixedCarousel) {
+				const productNames = products.slice(0, 5).map((p) => p.name).join(', ')
+
+				// Try to convert an existing carousel entry first
+				const carouselEntry = sanitized.find((e) => e.post_type === 'carousel')
+				if (carouselEntry) {
+					carouselEntry.product_id = undefined
+					carouselEntry.description = `MIXED_CAROUSEL — Carousel showcasing a mix of: ${productNames}. ${carouselEntry.description || ''}`
+					carouselEntry.title = `${input.product_type ? input.product_type.charAt(0).toUpperCase() + input.product_type.slice(1) : 'Top'} Collection`
+				} else {
+					// No carousel entry exists — inject one by converting the first PRODUCT_PROMO
+					const promoEntry = sanitized.find((e) => e.content_type === 'PRODUCT_PROMO')
+					if (promoEntry) {
+						promoEntry.post_type = 'carousel'
+						promoEntry.product_id = undefined
+						promoEntry.description = `MIXED_CAROUSEL — Carousel showcasing a mix of: ${productNames}. ${promoEntry.description || ''}`
+						promoEntry.content_type = 'PRODUCT_PROMO'
+						promoEntry.title = `${input.product_type ? input.product_type.charAt(0).toUpperCase() + input.product_type.slice(1) : 'Top'} Collection`
+					}
+				}
+			}
+		}
+
+		return sanitized
 	}
 
 	private async callAIForPostContent(entry: CalendarEntry): Promise<AIPostContent> {
@@ -1404,8 +1572,16 @@ Platform: ${entry.platform} | Format: ${entry.post_type} | Type: ${entry.content
 	}
 	// --- Design Templates ---
 
+	// Internal-only templates that should not appear in the user-facing template list.
+	// These are sub-templates used programmatically by other templates (e.g., explore-slide
+	// is rendered automatically as part of the explore-activities carousel).
+	private static readonly INTERNAL_TEMPLATE_SLUGS = ['explore-slide', 'explore-destination-slide']
+
 	async listDesignTemplates(mediaType?: string): Promise<IServiceResponse> {
-		const where: WhereOptions = { is_active: true }
+		const where: WhereOptions = {
+			is_active: true,
+			slug: { [Op.notIn]: ContentStudioService.INTERNAL_TEMPLATE_SLUGS },
+		}
 		if (mediaType) (where as any).media_type = mediaType
 
 		const templates = await DesignTemplate.findAll({
