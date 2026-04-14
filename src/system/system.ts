@@ -11,7 +11,7 @@ import { logger } from '../app/common/logger/logging'
 import dbConnSeq from '../db/config/database.config'
 import { errorHandler } from '../app/middlewares/commonErrorHandler'
 import routes from '../app/routes'
-import { seedProducts } from '../db/seeds/product.seed'
+import { seedProductsFromFeed } from '../app/module/product/product-sync.service'
 import { seedDesignTemplates } from '../db/seeds/design-template.seed'
 
 let routingUrl = '/api/v1'
@@ -57,7 +57,7 @@ export class System {
 				.sync({ alter: true, logging: false })
 				.then(async () => {
 					logger.info('📁[DB]: Database is connected and synced.')
-					await seedProducts()
+					await seedProductsFromFeed()
 					await seedDesignTemplates()
 					const port: number = process.env.PORT ? +process.env.PORT : 3000
 					app.listen(port, async () => {

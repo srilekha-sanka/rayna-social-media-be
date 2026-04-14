@@ -5,6 +5,7 @@ const productController = new ProductController()
 const productRouter = Router()
 
 productRouter.post('/', productController.create)
+productRouter.post('/sync', productController.sync)
 productRouter.post('/bulk', productController.bulkCreate)
 productRouter.get('/', productController.findAll)
 productRouter.get('/:id', productController.findById)

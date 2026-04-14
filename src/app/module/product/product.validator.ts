@@ -14,6 +14,41 @@ export const createProductSchema = Joi.object({
 	image_urls: Joi.array().items(Joi.string()).optional().default([]),
 	highlights: Joi.array().items(Joi.string()).optional().default([]),
 	meta: Joi.object().optional(),
+
+	// New fields
+	source_product_id: Joi.number().integer().optional(),
+	product_type: Joi.string().optional().trim(),
+	country: Joi.string().optional().trim(),
+	city_id: Joi.number().integer().optional(),
+	address: Joi.string().optional().trim().allow('', null),
+	latitude: Joi.number().optional(),
+	longitude: Joi.number().optional(),
+	avg_rating: Joi.number().min(0).max(5).optional(),
+	review_count: Joi.number().integer().min(0).optional().default(0),
+	duration: Joi.string().optional().trim().allow('', null),
+	pickup: Joi.string().optional().trim().allow('', null),
+	transport: Joi.string().optional().trim().allow('', null),
+	meals: Joi.string().optional().trim().allow('', null),
+	language: Joi.string().optional().trim().allow('', null),
+	group_size: Joi.string().optional().trim().allow('', null),
+	confirmation: Joi.string().optional().trim().allow('', null),
+	cancellation: Joi.string().optional().trim().allow('', null),
+	availability_status: Joi.string().optional().trim(),
+	booking_url: Joi.string().optional().trim(),
+	price_variant: Joi.string().optional().trim(),
+	promotion_badge: Joi.string().optional().trim().allow('', null),
+	amenities_raw: Joi.string().optional().trim().allow('', null),
+	image_count: Joi.number().integer().min(0).optional().default(0),
+
+	// Additional enriched feed fields
+	detail_title: Joi.string().optional().trim().allow('', null),
+	detail_share_url: Joi.string().optional().trim().allow('', null),
+	voucher: Joi.string().optional().trim().allow('', null),
+	total_price: Joi.number().min(0).optional(),
+	discount_percent: Joi.number().min(0).optional(),
+	discounted_price: Joi.number().min(0).optional(),
+	listing_amenities: Joi.string().optional().trim().allow('', null),
+	price_yacht_type: Joi.string().optional().trim().allow('', null),
 })
 
 export const updateProductSchema = Joi.object({
@@ -30,6 +65,41 @@ export const updateProductSchema = Joi.object({
 	image_urls: Joi.array().items(Joi.string()).optional(),
 	highlights: Joi.array().items(Joi.string()).optional(),
 	meta: Joi.object().optional(),
+
+	// New fields
+	source_product_id: Joi.number().integer().optional(),
+	product_type: Joi.string().optional().trim(),
+	country: Joi.string().optional().trim(),
+	city_id: Joi.number().integer().optional(),
+	address: Joi.string().optional().trim().allow('', null),
+	latitude: Joi.number().optional(),
+	longitude: Joi.number().optional(),
+	avg_rating: Joi.number().min(0).max(5).optional(),
+	review_count: Joi.number().integer().min(0).optional(),
+	duration: Joi.string().optional().trim().allow('', null),
+	pickup: Joi.string().optional().trim().allow('', null),
+	transport: Joi.string().optional().trim().allow('', null),
+	meals: Joi.string().optional().trim().allow('', null),
+	language: Joi.string().optional().trim().allow('', null),
+	group_size: Joi.string().optional().trim().allow('', null),
+	confirmation: Joi.string().optional().trim().allow('', null),
+	cancellation: Joi.string().optional().trim().allow('', null),
+	availability_status: Joi.string().optional().trim(),
+	booking_url: Joi.string().optional().trim(),
+	price_variant: Joi.string().optional().trim(),
+	promotion_badge: Joi.string().optional().trim().allow('', null),
+	amenities_raw: Joi.string().optional().trim().allow('', null),
+	image_count: Joi.number().integer().min(0).optional(),
+
+	// Additional enriched feed fields
+	detail_title: Joi.string().optional().trim().allow('', null),
+	detail_share_url: Joi.string().optional().trim().allow('', null),
+	voucher: Joi.string().optional().trim().allow('', null),
+	total_price: Joi.number().min(0).optional(),
+	discount_percent: Joi.number().min(0).optional(),
+	discounted_price: Joi.number().min(0).optional(),
+	listing_amenities: Joi.string().optional().trim().allow('', null),
+	price_yacht_type: Joi.string().optional().trim().allow('', null),
 }).min(1)
 
 export const productListQuerySchema = Joi.object({
@@ -38,4 +108,6 @@ export const productListQuerySchema = Joi.object({
 	category: Joi.string().optional().trim(),
 	city: Joi.string().optional().trim(),
 	search: Joi.string().optional().trim(),
+	product_type: Joi.string().optional().trim(),
+	country: Joi.string().optional().trim(),
 })
