@@ -404,6 +404,135 @@ class AnalyticsService {
 		}
 	}
 
+	// ── Query: Dashboard (single call for the frontend dashboard) ───
+
+	async getDashboard(query: DateRange = {}): Promise<IServiceResponse> {
+		const analyticsWhere: WhereOptions = { is_active: true }
+
+		// --- Connected social accounts ---
+		const connectedAccounts = await SocialAccount.findAll({
+			where: { is_active: true },
+			attributes: ['id', 'platform', 'display_name', 'username', 'avatar_url', 'status', 'followers_count'],
+			order: [['platform', 'ASC']],
+		})
+
+		const totalFollowers = connectedAccounts.reduce((sum, a) => sum + (a.followers_count || 0), 0)
+
+		// --- Post counts by status ---
+		const statusCounts = await Post.findAll({
+			where: { is_active: true },
+			attributes: ['status', [fn('COUNT', col('id')), 'count']],
+			group: ['status'],
+			raw: true,
+		})
+
+		const statusMap: Record<string, number> = {}
+		for (const row of statusCounts as any[]) {
+			statusMap[row.status] = parseInt(row.count, 10)
+		}
+
+		// --- Published posts within date range for analytics ---
+		const postWhere: WhereOptions = { is_active: true, status: 'PUBLISHED' }
+		if (query.from || query.to) {
+			const dateFilter: any = {}
+			if (query.from) dateFilter[Op.gte] = new Date(query.from)
+			if (query.to) dateFilter[Op.lte] = new Date(query.to)
+			postWhere.published_at = dateFilter
+		}
+
+		const publishedPosts = await Post.findAll({ where: postWhere, attributes: ['id'] })
+		const publishedIds = publishedPosts.map((p) => p.id)
+
+		if (publishedIds.length) {
+			analyticsWhere.post_id = { [Op.in]: publishedIds }
+		}
+
+		const allAnalytics = publishedIds.length
+			? await PostAnalytics.findAll({ where: analyticsWhere, raw: true })
+			: []
+
+		const totals = (allAnalytics as any[]).reduce(
+			(acc, m) => ({
+				likes: acc.likes + (m.likes || 0),
+				comments: acc.comments + (m.comments || 0),
+				shares: acc.shares + (m.shares || 0),
+				saves: acc.saves + (m.saves || 0),
+				reach: acc.reach + (m.reach || 0),
+				impressions: acc.impressions + (m.impressions || 0),
+				clicks: acc.clicks + (m.clicks || 0),
+				video_views: acc.video_views + (m.video_views || 0),
+			}),
+			{ likes: 0, comments: 0, shares: 0, saves: 0, reach: 0, impressions: 0, clicks: 0, video_views: 0 }
+		)
+
+		const totalEngagement = totals.likes + totals.comments + totals.shares
+		const engagementRate =
+			totals.impressions > 0 ? Math.round((totalEngagement / totals.impressions) * 100 * 100) / 100 : 0
+
+		// --- Recent posts (last 10, published only) with engagement ---
+		const recentPosts = await Post.findAll({
+			where: { is_active: true, status: 'PUBLISHED' },
+			attributes: ['id', 'base_content', 'platforms', 'media_urls', 'status', 'published_at', 'createdAt'],
+			order: [['published_at', 'DESC']],
+			limit: 10,
+			include: [
+				{ model: Campaign, attributes: ['id', 'name'] },
+			],
+		})
+
+		const recentPostIds = recentPosts.map((p) => p.id)
+		const recentAnalytics = recentPostIds.length
+			? await PostAnalytics.findAll({
+					where: { post_id: { [Op.in]: recentPostIds }, is_active: true },
+					raw: true,
+				})
+			: []
+
+		// Aggregate engagement per post
+		const postEngagementMap = new Map<string, number>()
+		for (const m of recentAnalytics as any[]) {
+			const current = postEngagementMap.get(m.post_id) || 0
+			postEngagementMap.set(m.post_id, current + (m.likes || 0) + (m.comments || 0) + (m.shares || 0))
+		}
+
+		const recentPostsData = recentPosts.map((p) => ({
+			id: p.id,
+			title: p.base_content ? p.base_content.substring(0, 80) : 'Untitled',
+			platforms: p.platforms,
+			media_urls: p.media_urls,
+			engagement: postEngagementMap.get(p.id) || 0,
+			published_at: p.published_at,
+			campaign: (p as any).campaign,
+		}))
+
+		return {
+			statusCode: 200,
+			payload: {
+				stats: {
+					total_followers: totalFollowers,
+					engagement_rate: engagementRate,
+					scheduled_posts: statusMap['SCHEDULED'] || 0,
+					total_reach: totals.reach,
+					total_impressions: totals.impressions,
+					total_posts: Object.values(statusMap).reduce((s, c) => s + c, 0),
+					published_posts: statusMap['PUBLISHED'] || 0,
+				},
+				totals,
+				connected_platforms: connectedAccounts.map((a) => ({
+					id: a.id,
+					platform: a.platform,
+					display_name: a.display_name,
+					username: a.username,
+					avatar_url: a.avatar_url,
+					status: a.status,
+					followers_count: a.followers_count || 0,
+				})),
+				recent_posts: recentPostsData,
+			},
+			message: 'Dashboard data fetched',
+		}
+	}
+
 	// ── Query: Dashboard Overview ────────────────────────────────────
 
 	async getOverview(query: DateRange = {}): Promise<IServiceResponse> {

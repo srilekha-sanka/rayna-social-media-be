@@ -45,6 +45,14 @@ export class System {
 
 	start = (app: http.Server) => {
 		try {
+			// Add 'canvas' to the renderer ENUM before sync (PostgreSQL won't auto-add ENUM values)
+			// dbConnSeq.query(
+			// 	`DO $$ BEGIN
+			// 		ALTER TYPE "enum_design_templates_renderer" ADD VALUE IF NOT EXISTS 'canvas';
+			// 	EXCEPTION WHEN duplicate_object THEN NULL;
+			// 	END $$;`
+			// ).catch(() => { /* ENUM may not exist yet on first run */ })
+
 			dbConnSeq
 				.sync({ alter: true, logging: false })
 				.then(async () => {

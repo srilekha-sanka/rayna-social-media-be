@@ -4,6 +4,9 @@ import AnalyticsController from './analytics.controller'
 const analyticsController = new AnalyticsController()
 const analyticsRouter = Router()
 
+// Full dashboard (stats + connected platforms + recent posts)
+analyticsRouter.get('/dashboard', analyticsController.getDashboard)
+
 // Dashboard overview
 analyticsRouter.get('/overview', analyticsController.getOverview)
 

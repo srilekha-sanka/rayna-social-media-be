@@ -4,7 +4,7 @@ import BaseModel from '../../utils/base.model'
 import { BaseAttributes, BaseModelType } from '../../interfaces/BaseAttributes'
 
 export type MediaType = 'image' | 'video'
-export type RendererType = 'html' | 'python'
+export type RendererType = 'html' | 'canvas'
 
 export interface PromptConfig {
 	design_prompt: string
@@ -59,7 +59,7 @@ class DesignTemplate extends BaseModel<DesignTemplateAttributes, DesignTemplateC
 	media_type!: MediaType
 
 	@Column({
-		type: DataType.ENUM('html', 'python'),
+		type: DataType.ENUM('html', 'canvas'),
 		allowNull: false,
 		defaultValue: 'html',
 	})

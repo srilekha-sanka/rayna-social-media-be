@@ -546,77 +546,35 @@ Generate a bold, clean, premium Instagram travel poster with:
 	},
 
 	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-	// PYTHON + PILLOW TEMPLATES (Advanced image compositing)
+	// CANVAS / SKIA TEMPLATES (Native Node.js, ultra-fast)
 	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-	// ─── 6. Promo Collage (Python) ─────────────────────────────
+	// ─── 6. Explore Activities (Canvas) ───────────────────────
 	{
-		name: 'Promo Collage',
-		slug: 'promo-collage',
-		renderer: 'python' as const,
-		description: 'Promotional offer banner with polaroid-style photo collage, coupon badge, gradient or striped background. Ideal for discount campaigns.',
+		name: 'Explore Activities',
+		slug: 'explore-activities',
+		renderer: 'canvas' as const,
+		description: 'Carousel overview slide: off-white poster with decorative clouds, bird silhouettes, three scattered polaroid photo frames, bold stacked headline, and stats section.',
 		media_type: 'image' as const,
 		prompt_config: {
-			design_prompt: 'Python/Pillow template: promotional banner with coupon code badge and polaroid photo collage. Supports gradient, striped, or image backgrounds.',
-			dynamic_fields: ['headline', 'subheadline', 'coupon_code', 'coupon_label', 'photos', 'accent_color', 'bg_type'],
+			design_prompt: 'Canvas/Skia template: off-white gradient background with cloud and bird PNG decorations, three scattered polaroid-style photo cards with rotations, bold "Explore. Thrilling. Activities." headline tags, and stats row.',
+			dynamic_fields: ['headlineWords', 'photos', 'website', 'stats'],
 		},
 		sort_order: 6,
 	},
 
-	// ─── 7. Hotel Feature (Python) ─────────────────────────────
+	// ─── 7. Explore Slide (Canvas) ────────────────────────────
 	{
-		name: 'Hotel Feature',
-		slug: 'hotel-feature',
-		renderer: 'python' as const,
-		description: 'Full-bleed background image with large headline, coupon badge, and bottom feature bar with icon columns. Great for hotel/stay offers.',
+		name: 'Explore Slide',
+		slug: 'explore-slide',
+		renderer: 'canvas' as const,
+		description: 'Carousel item slide: single large photo card with location badge overlay, activity title tag, and description. Used for slides 2+ in the explore carousel.',
 		media_type: 'image' as const,
 		prompt_config: {
-			design_prompt: 'Python/Pillow template: full-bleed background with gradient overlay, multi-line headline, coupon badge, and bottom feature bar with USP columns.',
-			dynamic_fields: ['pre_headline', 'headline', 'subheadline', 'coupon_code', 'accent_color', 'features'],
+			design_prompt: 'Canvas/Skia template: off-white gradient background with clouds and birds, single large photo card with grey border and white inner frame, location badge overlay, dark title tag, and centered subtitle.',
+			dynamic_fields: ['title', 'subtitle', 'locationBadge', 'photo', 'website'],
 		},
 		sort_order: 7,
-	},
-
-	// ─── 8. Phone Mockup (Python) ──────────────────────────────
-	{
-		name: 'Phone Mockup',
-		slug: 'phone-mockup',
-		renderer: 'python' as const,
-		description: 'Scenic background with a phone mockup showing a travel image, bold headline, and accent bars. Perfect for re-engagement and app promotion.',
-		media_type: 'image' as const,
-		prompt_config: {
-			design_prompt: 'Python/Pillow template: scenic background with phone device mockup, bold headline, subheadline, and colored accent bars.',
-			dynamic_fields: ['headline', 'subheadline', 'phone_image', 'accent_bars'],
-		},
-		sort_order: 8,
-	},
-
-	// ─── 9. Photo Board (Python) ───────────────────────────────
-	{
-		name: 'Photo Board',
-		slug: 'photo-board',
-		renderer: 'python' as const,
-		description: 'Textured background (wood planks or stripes) with scattered polaroid photos, offer headline, and coupon badge. Magazine-style layout.',
-		media_type: 'image' as const,
-		prompt_config: {
-			design_prompt: 'Python/Pillow template: wood or striped texture background with scattered polaroid-framed photos, offer headline, accent bars, and coupon badge.',
-			dynamic_fields: ['headline', 'subheadline', 'coupon_code', 'photos', 'accent_color', 'bg_texture'],
-		},
-		sort_order: 9,
-	},
-
-	// ─── 10. Minimal CTA (Python) ──────────────────────────────
-	{
-		name: 'Minimal CTA',
-		slug: 'minimal-cta',
-		renderer: 'python' as const,
-		description: 'Clean full-bleed background with vignette, large headline, CTA button, and optional coupon badge. Versatile for any promotion.',
-		media_type: 'image' as const,
-		prompt_config: {
-			design_prompt: 'Python/Pillow template: full-bleed image with vignette and gradient overlay, large bold headline, rounded CTA button, and optional coupon badge.',
-			dynamic_fields: ['headline', 'subheadline', 'cta_text', 'coupon_code', 'accent_color', 'headline_position'],
-		},
-		sort_order: 10,
 	},
 ]
 

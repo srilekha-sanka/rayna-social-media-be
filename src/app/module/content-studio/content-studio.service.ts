@@ -176,7 +176,7 @@ class ContentStudioService {
 		let mediaUrls: string[] = data?.media_urls || []
 
 		// Templates that need multiple images override the requested count
-		const multiImageSlugs = ['promo-collage', 'photo-board']
+		const multiImageSlugs = ['promo-collage', 'photo-board', 'explore-activities']
 		const numImages = multiImageSlugs.includes(template.slug)
 			? 4
 			: (data?.num_images || 1)
@@ -1252,10 +1252,13 @@ Note: Using AI-designed poster with "${template.name}" style.`)
 
 	private sanitizeAIEntries(entries: AIPlanEntry[], products?: Product[]): AIPlanEntry[] {
 		const validContentTypes: EntryContentType[] = ['PRODUCT_PROMO', 'FESTIVAL_GREETING', 'ENGAGEMENT', 'VALUE', 'BRAND_AWARENESS']
+		const validProductIds = new Set(products?.map((p) => p.id) || [])
 		let productIndex = 0
 		return entries.map((e) => {
 			const content_type = validContentTypes.includes(e.content_type) ? e.content_type : 'BRAND_AWARENESS'
-			let productId = this.sanitizeProductId(e.product_id) || undefined
+			const rawProductId = this.sanitizeProductId(e.product_id)
+			// Only accept product_id if it exists in the actual products list
+			let productId = rawProductId && validProductIds.has(rawProductId) ? rawProductId : undefined
 
 			// If PRODUCT_PROMO but AI didn't assign a valid product_id, assign one from the available products (round-robin)
 			if (!productId && content_type === 'PRODUCT_PROMO' && products?.length) {

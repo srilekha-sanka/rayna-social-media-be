@@ -45,6 +45,19 @@ class AnalyticsController extends ResponseService {
 		}
 	}
 
+	// GET /analytics/dashboard — full dashboard data (stats + platforms + recent posts)
+	getDashboard = async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			const { error, value } = dateRangeSchema.validate(req.query, { stripUnknown: true })
+			if (error) throw new BadRequestError(error.details.map((d) => d.message).join(', '))
+
+			const { statusCode, payload, message } = await analyticsService.getDashboard(value)
+			return this.sendResponse(res, statusCode, payload, message)
+		} catch (err) {
+			next(err)
+		}
+	}
+
 	// GET /analytics/overview — dashboard overview
 	getOverview = async (req: Request, res: Response, next: NextFunction) => {
 		try {

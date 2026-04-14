@@ -9,7 +9,7 @@ import Campaign from '../campaign/campaign.model'
 import User from '../user/user.model'
 import { aiService } from '../ai/ai.service'
 import { imageOverlayService, AspectRatio, PosterConfig } from '../image/image-overlay.service'
-import { pythonTemplateRenderer } from '../image/python-template-renderer.service'
+import { canvasTemplateRenderer } from '../image/canvas-template-renderer.bridge'
 import { cloudinaryService } from '../cloudinary/cloudinary.service'
 import { freepikService } from '../freepik/freepik.service'
 import CalendarEntry from '../content-studio/calendar-entry.model'
@@ -700,9 +700,9 @@ Note: Using AI-generated imagery.`)
 		const data = buildPosterData(entry, product)
 		const aspectRatio = resolveAspectRatio(entry.platform, entry.post_type)
 
-		// ── Route: Python (Pillow) vs HTML (Puppeteer) ───────────────
-		if (template.renderer === 'python') {
-			return this.applyPythonTemplate(image_urls, template, data, aspectRatio)
+		// ── Route: Canvas (Skia) vs HTML (Puppeteer) ──
+		if (template.renderer === 'canvas') {
+			return this.applyCanvasTemplate(image_urls, template, data, aspectRatio)
 		}
 
 		return this.applyHtmlTemplate(image_urls, template, data, aspectRatio, entry, product)
@@ -710,20 +710,30 @@ Note: Using AI-generated imagery.`)
 
 	// ── Python / Pillow renderer ────────────────────────────────────
 
-	private async applyPythonTemplate(
+	// ── Canvas / Skia renderer ─────────────────────────────────────
+
+	private async applyCanvasTemplate(
 		image_urls: string[],
 		template: DesignTemplate,
 		data: Record<string, string>,
 		aspectRatio: AspectRatio,
 	): Promise<string[]> {
-		const logoPath = path.join(__dirname, '../../../../assets/rayna-logo.png')
-		const hasLogo = fs.existsSync(logoPath)
+		// Download brand logo from env URL
+		const brandLogoUrl = process.env.BRAND_LOGO_URL || ''
+		let logoLocalPath: string | undefined
+		if (brandLogoUrl) {
+			try {
+				logoLocalPath = await this.downloadImage(brandLogoUrl, 'canvas-logo')
+			} catch (err: any) {
+				logger.warn(`Failed to download brand logo: ${err.message}`)
+			}
+		}
 
-		// Download ALL product images to local files
+		// Download product images to local files
 		const localPaths: string[] = []
 		for (let i = 0; i < image_urls.length; i++) {
 			try {
-				const p = await this.downloadImage(image_urls[i], `py-src-${i}`)
+				const p = await this.downloadImage(image_urls[i], `canvas-src-${i}`)
 				localPaths.push(p)
 			} catch (err: any) {
 				logger.warn(`Failed to download image ${i}: ${err.message}`)
@@ -731,108 +741,98 @@ Note: Using AI-generated imagery.`)
 		}
 
 		if (localPaths.length === 0) {
-			logger.error('No images available for Python template render')
+			logger.error('No images available for canvas template render')
 			return []
 		}
 
-		const bgImagePath = localPaths[0]
-		const allPhotoPaths = localPaths.slice(0)
-		logger.info(`[py-template] image_urls received: ${image_urls.length}, localPaths downloaded: ${localPaths.length}`)
-
 		try {
 			const config: Record<string, unknown> = {
-				headline: data.headline,
-				subheadline: data.subheadline || data.tagline || '',
-				coupon_code: data.price || '',
-				coupon_label: 'Starting From:',
-				logo_path: hasLogo ? logoPath : '',
-				accent_color: [234, 88, 12],
-				tc_text: '*T&C apply',
+				logoPath: logoLocalPath,
+				website: 'www.raynatours.com',
 			}
 
-			switch (template.slug) {
-				case 'promo-collage': {
-					config.headline = `Get up to 20% OFF*`
-					config.subheadline = `on ${data.headline}`
-					config.coupon_code = 'RAYNOW'
-					config.coupon_label = 'Use Code:'
-					config.bg_type = 'striped'
-					// Always produce 3 collage photos from product images
-					const squares: string[] = []
-					for (let i = 0; i < 3; i++) squares.push(allPhotoPaths[i % allPhotoPaths.length])
-					config.photos = squares
-					break
+			const templateAspect = (aspectRatio === 'auto' ? '4:5' : aspectRatio) as any
+
+			// ── explore-activities: carousel (slide 1 = overview, slides 2+ = per-image) ──
+			if (template.slug === 'explore-activities') {
+				const urls: string[] = []
+
+				// Slide 1: overview with 3 photo cards
+				const overviewPhotos: string[] = []
+				for (let i = 0; i < 3; i++) overviewPhotos.push(localPaths[i % localPaths.length])
+				config.headlineWords = ['Explore.', 'Thrilling.', 'Activities.']
+				config.photos = overviewPhotos
+
+				logger.info(`[canvas-template] Rendering explore-activities slide 1 (overview) photos=${overviewPhotos.length}`)
+				const slide1 = await canvasTemplateRenderer.render({
+					template: 'explore-activities',
+					config,
+					format: 'PNG',
+					aspect_ratio: templateAspect,
+				})
+				urls.push(await this.uploadCanvasBuffer(slide1))
+
+				// Slides 2+: one explore-slide per product image
+				const location = data.destination || ''
+				const activityTitle = data.headline || 'Activity'
+				const activitySubtitle = data.subheadline || data.tagline || ''
+
+				for (let i = 0; i < localPaths.length; i++) {
+					const slideConfig: Record<string, unknown> = {
+						logoPath: logoLocalPath,
+						website: 'www.raynatours.com',
+						title: activityTitle,
+						subtitle: activitySubtitle,
+						locationBadge: location,
+						photo: localPaths[i],
+					}
+
+					logger.info(`[canvas-template] Rendering explore-slide ${i + 2}`)
+					const slideBuffer = await canvasTemplateRenderer.render({
+						template: 'explore-slide',
+						config: slideConfig,
+						format: 'PNG',
+						aspect_ratio: templateAspect,
+					})
+					urls.push(await this.uploadCanvasBuffer(slideBuffer))
 				}
-				case 'hotel-feature':
-					config.pre_headline = `For that Dream Trip:`
-					config.headline = `GRAB UP TO\n${data.price}`
-					config.subheadline = `on ${data.headline}`
-					config.coupon_code = data.duration || data.dates || 'BOOK NOW'
-					config.coupon_label = 'Starting From:'
-					config.features = [
-						{ icon: '\u2713', text: data.includes?.split('|')[0]?.trim() || 'Premium\nExperience' },
-						{ icon: '\u21BB', text: 'Free Cancellation\nAvailable' },
-						{ icon: '\u2605', text: 'Verified Reviews\n& Ratings' },
-						{ icon: '\u25A3', text: 'Real Photos\nby Guests' },
-						{ icon: '\u260E', text: `Contact Us\n${data.contact?.split('|')[0]?.trim() || 'Anytime'}` },
-					]
-					break
-				case 'phone-mockup':
-					config.headline = data.headline
-					config.subheadline = `Book your ${data.headline} trip today!`
-					config.accent_bars = [[37, 99, 235], [220, 38, 38]]
-					config.phone_image = localPaths.length > 1 ? localPaths[1] : localPaths[0]
-					break
-				case 'photo-board':
-					config.headline = `${data.headline} from ${data.price}`
-					config.subheadline = data.includes || 'Tours & Attractions'
-					config.coupon_code = data.duration || data.dates || ''
-					config.bg_texture = 'striped'
-					config.photos = allPhotoPaths
-					break
-				case 'minimal-cta':
-					config.headline = data.headline
-					config.subheadline = `Starting from ${data.price}`
-					config.cta_text = 'Book Now'
-					break
+
+				return urls
+			}
+
+			// ── Default: single-image canvas templates ──
+			switch (template.slug) {
 				default:
-					config.bg_type = 'image'
-					config.photos = allPhotoPaths
+					config.photos = localPaths
 					break
 			}
 
-			// phone-mockup renders as landscape 16:9; all others use the requested ratio
-			// These templates render as landscape 16:9
-			const landscapeSlugs = ['phone-mockup', 'promo-collage', 'photo-board']
-			const templateAspect = landscapeSlugs.includes(template.slug)
-				? '16:9' as const
-				: (aspectRatio === 'auto' ? '4:5' : aspectRatio) as any
+			logger.info(`[canvas-template] Rendering ${template.slug} aspect=${templateAspect} photos=${localPaths.length}`)
 
-			logger.info(`[py-template] Rendering ${template.slug} aspect=${templateAspect} bg=${bgImagePath} photos=${(config.photos as string[] || []).length}`)
-
-			const outputBuffer = await pythonTemplateRenderer.render({
+			const outputBuffer = await canvasTemplateRenderer.render({
 				template: template.slug as any,
 				config,
-				base_image: bgImagePath,
 				format: 'PNG',
 				aspect_ratio: templateAspect,
 			})
 
-			let url: string
-			if (cloudinaryService.enabled) {
-				const uploaded = await cloudinaryService.uploadBuffer(outputBuffer, { folder: 'rayna/designed-posters' })
-				url = uploaded.secure_url
-			} else {
-				const fileName = `py-poster-${Date.now()}.png`
-				const destPath = path.join(PROCESSED_DIR, fileName)
-				fs.writeFileSync(destPath, outputBuffer)
-				url = `/uploads/processed/${fileName}`
-			}
-
-			return [url]
+			return [await this.uploadCanvasBuffer(outputBuffer)]
 		} finally {
 			for (const p of localPaths) this.cleanup(p)
+			if (logoLocalPath) this.cleanup(logoLocalPath)
 		}
+	}
+
+	/** Upload a rendered canvas buffer to Cloudinary or save locally */
+	private async uploadCanvasBuffer(buffer: Buffer): Promise<string> {
+		if (cloudinaryService.enabled) {
+			const uploaded = await cloudinaryService.uploadBuffer(buffer, { folder: 'rayna/designed-posters' })
+			return uploaded.secure_url
+		}
+		const fileName = `canvas-poster-${Date.now()}-${Math.round(Math.random() * 1e4)}.png`
+		const destPath = path.join(PROCESSED_DIR, fileName)
+		fs.writeFileSync(destPath, buffer)
+		return `/uploads/processed/${fileName}`
 	}
 
 	// ── HTML / Puppeteer renderer ───────────────────────────────────
