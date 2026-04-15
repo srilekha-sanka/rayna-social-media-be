@@ -53,6 +53,22 @@ interface CarouselResponse {
 	cta: string
 }
 
+interface ExploreSlideContentResponse {
+	overview: {
+		headline_words: string[]
+		stats: Array<{ bold_text: string; normal_text: string; icon_type: 'star' | 'shield' | 'gift' }>
+	}
+	slides: Array<{
+		product_index: number
+		title: string
+		subtitle: string
+		location_badge: string
+	}>
+	caption: string
+	hashtags: string[]
+	cta: string
+}
+
 class AiService {
 	async generateCaption(input: CaptionInput): Promise<IServiceResponse> {
 		if (!env.openai.apiKey) {
@@ -209,6 +225,83 @@ Design a ${input.slide_count}-slide carousel that makes someone book this experi
 		const result = await this.callOpenAI<CarouselResponse>(systemPrompt, userPrompt)
 
 		return { statusCode: 200, payload: result, message: 'Carousel content generated successfully' }
+	}
+
+	/**
+	 * Generate content for explore-style carousel slides where each slide
+	 * showcases a different product/activity. Returns per-slide title,
+	 * subtitle, location badge, and an overall post caption with hashtags.
+	 */
+	async generateExploreSlideContent(input: {
+		products: Array<{
+			name: string
+			description: string
+			city?: string
+			country?: string
+			price?: string
+			category?: string
+		}>
+		product_type: string
+		platform: string
+		template_style: string
+	}): Promise<IServiceResponse> {
+		if (!env.openai.apiKey) {
+			throw new BadRequestError('OPENAI_API_KEY is not configured')
+		}
+
+		const systemPrompt = `You are the creative director at Rayna Tours — Dubai's most-booked tours & activities company. You design explore-style carousel posts that showcase MULTIPLE ${input.product_type} in a single visually stunning post.
+
+Always respond in valid JSON format:
+{
+  "overview": {
+    "headline_words": ["word1", "word2", "word3"],
+    "stats": [
+      { "bold_text": "stat value", "normal_text": "stat label", "icon_type": "star|shield|gift" }
+    ]
+  },
+  "slides": [
+    {
+      "product_index": 0,
+      "title": "Activity Name",
+      "subtitle": "short engaging description under 12 words",
+      "location_badge": "City or Country"
+    }
+  ],
+  "caption": "overall post caption for the carousel",
+  "hashtags": ["#hashtag1", "#hashtag2"],
+  "cta": "call to action text"
+}
+
+RULES:
+- overview.headline_words: exactly 3 impactful words that describe the ${input.product_type} theme (e.g., ["Explore.", "Thrilling.", "Activities."]). Each word MUST end with a period. Keep them bold, aspirational, relevant to ${input.product_type}.
+- overview.stats: exactly 3 stats about Rayna Tours that build trust (e.g., "4.9+ Rated Experiences", "1000+ Experiences to choose from", "1L+ Customers served & counting"). icon_type must be "star", "shield", or "gift".
+- slides: one entry per product (${input.products.length} total). Each slide is a separate activity/product card.
+  - title: the activity/product name — short, punchy, 1-4 words MAX. This goes on a DARK TAG over the image.
+  - subtitle: an engaging one-liner (under 12 words) that makes someone WANT to try this activity. Paint a vivid picture. NO generic text — be specific to the activity.
+  - location_badge: the city or country name shown as an overlay badge on the photo (e.g., "Dubai", "Switzerland", "Vietnam"). Use the product's actual location.
+  - product_index: index in the products array (0-based)
+- caption: write like a Dubai travel influencer. Hook → variety highlight → FOMO → CTA. Mention the mix of ${input.product_type} available.
+- hashtags: 15-20 strategic hashtags mixing brand, ${input.product_type}-specific, geo, and trending tags.
+- cta: action-driven CTA for the whole carousel.
+- Platform: ${input.platform}
+- Template style: ${input.template_style} — keep text concise and visually oriented.`
+
+		const productList = input.products.map((p, i) =>
+			`${i + 1}. ${p.name}${p.city ? ` (${p.city})` : ''}${p.country ? `, ${p.country}` : ''}: ${p.description?.slice(0, 120) || 'N/A'}${p.price ? ` — ${p.price}` : ''}`
+		).join('\n')
+
+		const userPrompt = `Product type: ${input.product_type}
+Platform: ${input.platform}
+Number of ${input.product_type}: ${input.products.length}
+
+${input.product_type.charAt(0).toUpperCase() + input.product_type.slice(1)} to feature:
+${productList}
+
+Design an explore-style carousel that showcases ALL these ${input.product_type} — one per slide. Make each slide feel like a mini travel poster that makes someone want to book immediately.`
+
+		const result = await this.callOpenAI<ExploreSlideContentResponse>(systemPrompt, userPrompt)
+
+		return { statusCode: 200, payload: result, message: 'Explore slide content generated successfully' }
 	}
 
 	async callOpenAIRaw<T = any>(systemPrompt: string, userPrompt: string): Promise<T> {

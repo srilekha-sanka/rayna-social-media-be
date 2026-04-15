@@ -12,9 +12,14 @@ interface UserAttributes extends BaseAttributes {
 	last_name?: string | null
 	role_id?: string | null
 	refresh_token?: string | null
+	title?: string | null
+	timezone?: string | null
+	bio?: string | null
+	profile_photo?: string | null
 }
 
-interface UserCreationAttributes extends Optional<UserAttributes, BaseModelType | 'role_id' | 'refresh_token' | 'last_name'> {}
+interface UserCreationAttributes
+	extends Optional<UserAttributes, BaseModelType | 'role_id' | 'refresh_token' | 'last_name' | 'title' | 'timezone' | 'bio' | 'profile_photo'> {}
 
 @Table({
 	tableName: 'users',
@@ -62,6 +67,31 @@ class User extends BaseModel<UserAttributes, UserCreationAttributes> {
 		allowNull: true,
 	})
 	refresh_token?: string
+
+	@Column({
+		type: DataType.STRING(255),
+		allowNull: true,
+	})
+	title?: string
+
+	@Column({
+		type: DataType.STRING(100),
+		allowNull: true,
+		defaultValue: 'UTC',
+	})
+	timezone?: string
+
+	@Column({
+		type: DataType.TEXT,
+		allowNull: true,
+	})
+	bio?: string
+
+	@Column({
+		type: DataType.STRING(500),
+		allowNull: true,
+	})
+	profile_photo?: string
 }
 
 export default User

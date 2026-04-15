@@ -9,7 +9,7 @@ import Campaign from '../campaign/campaign.model'
 import User from '../user/user.model'
 import { aiService } from '../ai/ai.service'
 import { imageOverlayService, AspectRatio, PosterConfig } from '../image/image-overlay.service'
-import { pythonTemplateRenderer } from '../image/python-template-renderer.service'
+import { canvasTemplateRenderer } from '../image/canvas-template-renderer.bridge'
 import { cloudinaryService } from '../cloudinary/cloudinary.service'
 import { freepikService } from '../freepik/freepik.service'
 import CalendarEntry from '../content-studio/calendar-entry.model'
@@ -24,6 +24,22 @@ if (!fs.existsSync(PROCESSED_DIR)) fs.mkdirSync(PROCESSED_DIR, { recursive: true
 
 type Intent = 'SELL' | 'VALUE' | 'ENGAGEMENT'
 type JobStatus = 'PROCESSING' | 'COMPLETED' | 'FAILED'
+
+interface ExploreSlideAIContent {
+	overview: {
+		headline_words: string[]
+		stats: Array<{ bold_text: string; normal_text: string; icon_type: 'star' | 'shield' | 'gift' }>
+	}
+	slides: Array<{
+		product_index: number
+		title: string
+		subtitle: string
+		location_badge: string
+	}>
+	caption: string
+	hashtags: string[]
+	cta: string
+}
 
 interface GenerateCarouselInput {
 	product_id: string
@@ -694,15 +710,16 @@ Note: Using AI-generated imagery.`)
 		template: DesignTemplate
 		entry: CalendarEntry
 		product?: Product
+		products?: Product[]
 		additional_prompt?: string
 	}): Promise<string[]> {
-		const { image_urls, template, entry, product } = input
+		const { image_urls, template, entry, product, products } = input
 		const data = buildPosterData(entry, product)
 		const aspectRatio = resolveAspectRatio(entry.platform, entry.post_type)
 
-		// ── Route: Python (Pillow) vs HTML (Puppeteer) ───────────────
-		if (template.renderer === 'python') {
-			return this.applyPythonTemplate(image_urls, template, data, aspectRatio)
+		// ── Route: Canvas (Skia) vs HTML (Puppeteer) ──
+		if (template.renderer === 'canvas') {
+			return this.applyCanvasTemplate(image_urls, template, data, aspectRatio, entry, products)
 		}
 
 		return this.applyHtmlTemplate(image_urls, template, data, aspectRatio, entry, product)
@@ -710,20 +727,36 @@ Note: Using AI-generated imagery.`)
 
 	// ── Python / Pillow renderer ────────────────────────────────────
 
-	private async applyPythonTemplate(
+	// ── Canvas / Skia renderer ─────────────────────────────────────
+
+	private async applyCanvasTemplate(
 		image_urls: string[],
 		template: DesignTemplate,
 		data: Record<string, string>,
 		aspectRatio: AspectRatio,
+		entry?: CalendarEntry,
+		products?: Product[],
 	): Promise<string[]> {
-		const logoPath = path.join(__dirname, '../../../../assets/rayna-logo.png')
-		const hasLogo = fs.existsSync(logoPath)
+		// Download brand logo from env URL
+		const brandLogoUrl = process.env.BRAND_LOGO_URL || ''
+		let logoLocalPath: string | undefined
+		if (brandLogoUrl) {
+			try {
+				logoLocalPath = await this.downloadImage(brandLogoUrl, 'canvas-logo')
+			} catch (err: any) {
+				logger.warn(`Failed to download brand logo: ${err.message}`)
+			}
+		}
 
-		// Download ALL product images to local files
+		// Download product images to local files
+		logger.info(`[canvas-download] Downloading ${image_urls.length} images for template ${template.slug}`)
 		const localPaths: string[] = []
 		for (let i = 0; i < image_urls.length; i++) {
 			try {
-				const p = await this.downloadImage(image_urls[i], `py-src-${i}`)
+				logger.info(`[canvas-download] Image ${i}: ${image_urls[i]?.substring(0, 100)}`)
+				const p = await this.downloadImage(image_urls[i], `canvas-src-${i}`)
+				const fileSize = fs.existsSync(p) ? fs.statSync(p).size : 0
+				logger.info(`[canvas-download] Image ${i} saved to ${p}, size=${fileSize}`)
 				localPaths.push(p)
 			} catch (err: any) {
 				logger.warn(`Failed to download image ${i}: ${err.message}`)
@@ -731,108 +764,341 @@ Note: Using AI-generated imagery.`)
 		}
 
 		if (localPaths.length === 0) {
-			logger.error('No images available for Python template render')
+			logger.error('No images available for canvas template render')
 			return []
 		}
 
-		const bgImagePath = localPaths[0]
-		const allPhotoPaths = localPaths.slice(0)
-		logger.info(`[py-template] image_urls received: ${image_urls.length}, localPaths downloaded: ${localPaths.length}`)
-
 		try {
 			const config: Record<string, unknown> = {
-				headline: data.headline,
-				subheadline: data.subheadline || data.tagline || '',
-				coupon_code: data.price || '',
-				coupon_label: 'Starting From:',
-				logo_path: hasLogo ? logoPath : '',
-				accent_color: [234, 88, 12],
-				tc_text: '*T&C apply',
+				logoPath: logoLocalPath,
+				website: 'www.raynatours.com',
 			}
 
+			const templateAspect = (aspectRatio === 'auto' ? '4:5' : aspectRatio) as any
+
+			// ── explore-activities: multi-product carousel ──
+			if (template.slug === 'explore-activities') {
+				const result = await this.renderExploreActivitiesCarousel(
+					localPaths, logoLocalPath, templateAspect, data, entry, products,
+				)
+				return result
+			}
+
+			// ── explore-destinations: multi-product carousel ──
+			if (template.slug === 'explore-destinations') {
+				const result = await this.renderExploreDestinationsCarousel(
+					localPaths, logoLocalPath, templateAspect, data, entry, products,
+				)
+				return result
+			}
+
+			// ── Default: single-image canvas templates ──
 			switch (template.slug) {
-				case 'promo-collage': {
-					config.headline = `Get up to 20% OFF*`
-					config.subheadline = `on ${data.headline}`
-					config.coupon_code = 'RAYNOW'
-					config.coupon_label = 'Use Code:'
-					config.bg_type = 'striped'
-					// Always produce 3 collage photos from product images
-					const squares: string[] = []
-					for (let i = 0; i < 3; i++) squares.push(allPhotoPaths[i % allPhotoPaths.length])
-					config.photos = squares
-					break
-				}
-				case 'hotel-feature':
-					config.pre_headline = `For that Dream Trip:`
-					config.headline = `GRAB UP TO\n${data.price}`
-					config.subheadline = `on ${data.headline}`
-					config.coupon_code = data.duration || data.dates || 'BOOK NOW'
-					config.coupon_label = 'Starting From:'
-					config.features = [
-						{ icon: '\u2713', text: data.includes?.split('|')[0]?.trim() || 'Premium\nExperience' },
-						{ icon: '\u21BB', text: 'Free Cancellation\nAvailable' },
-						{ icon: '\u2605', text: 'Verified Reviews\n& Ratings' },
-						{ icon: '\u25A3', text: 'Real Photos\nby Guests' },
-						{ icon: '\u260E', text: `Contact Us\n${data.contact?.split('|')[0]?.trim() || 'Anytime'}` },
-					]
-					break
-				case 'phone-mockup':
-					config.headline = data.headline
-					config.subheadline = `Book your ${data.headline} trip today!`
-					config.accent_bars = [[37, 99, 235], [220, 38, 38]]
-					config.phone_image = localPaths.length > 1 ? localPaths[1] : localPaths[0]
-					break
-				case 'photo-board':
-					config.headline = `${data.headline} from ${data.price}`
-					config.subheadline = data.includes || 'Tours & Attractions'
-					config.coupon_code = data.duration || data.dates || ''
-					config.bg_texture = 'striped'
-					config.photos = allPhotoPaths
-					break
-				case 'minimal-cta':
-					config.headline = data.headline
-					config.subheadline = `Starting from ${data.price}`
-					config.cta_text = 'Book Now'
-					break
 				default:
-					config.bg_type = 'image'
-					config.photos = allPhotoPaths
+					config.photos = localPaths
 					break
 			}
 
-			// phone-mockup renders as landscape 16:9; all others use the requested ratio
-			// These templates render as landscape 16:9
-			const landscapeSlugs = ['phone-mockup', 'promo-collage', 'photo-board']
-			const templateAspect = landscapeSlugs.includes(template.slug)
-				? '16:9' as const
-				: (aspectRatio === 'auto' ? '4:5' : aspectRatio) as any
+			logger.info(`[canvas-template] Rendering ${template.slug} aspect=${templateAspect} photos=${localPaths.length}`)
 
-			logger.info(`[py-template] Rendering ${template.slug} aspect=${templateAspect} bg=${bgImagePath} photos=${(config.photos as string[] || []).length}`)
-
-			const outputBuffer = await pythonTemplateRenderer.render({
+			const outputBuffer = await canvasTemplateRenderer.render({
 				template: template.slug as any,
 				config,
-				base_image: bgImagePath,
 				format: 'PNG',
 				aspect_ratio: templateAspect,
 			})
 
-			let url: string
-			if (cloudinaryService.enabled) {
-				const uploaded = await cloudinaryService.uploadBuffer(outputBuffer, { folder: 'rayna/designed-posters' })
-				url = uploaded.secure_url
-			} else {
-				const fileName = `py-poster-${Date.now()}.png`
-				const destPath = path.join(PROCESSED_DIR, fileName)
-				fs.writeFileSync(destPath, outputBuffer)
-				url = `/uploads/processed/${fileName}`
-			}
-
-			return [url]
+			return [await this.uploadCanvasBuffer(outputBuffer)]
 		} finally {
 			for (const p of localPaths) this.cleanup(p)
+			if (logoLocalPath) this.cleanup(logoLocalPath)
 		}
+	}
+
+	/**
+	 * Renders an explore-activities carousel with multi-product mixing.
+	 * Slide 1 = overview (3 photo cards + headline + stats).
+	 * Slides 2+ = one explore-slide per product with AI-generated content.
+	 */
+	private async renderExploreActivitiesCarousel(
+		localPaths: string[],
+		logoLocalPath: string | undefined,
+		templateAspect: string,
+		data: Record<string, string>,
+		entry?: CalendarEntry,
+		products?: Product[],
+	): Promise<string[]> {
+		const urls: string[] = []
+		const hasMultipleProducts = products && products.length > 1
+		const productType = products?.[0]?.product_type || 'activities'
+		const resolvedAspect = templateAspect === 'auto' ? '4:5' : templateAspect
+
+		const debugLines: string[] = []
+		debugLines.push(`[explore-carousel] localPaths=${JSON.stringify(localPaths)}, products=${products?.length || 0}, hasMultipleProducts=${hasMultipleProducts}`)
+		for (const lp of localPaths) {
+			const exists = fs.existsSync(lp)
+			const size = exists ? fs.statSync(lp).size : 0
+			debugLines.push(`[explore-carousel] path=${lp}, exists=${exists}, size=${size}`)
+		}
+		debugLines.push(`[explore-carousel] logoPath=${logoLocalPath}, logoExists=${logoLocalPath ? fs.existsSync(logoLocalPath) : 'N/A'}`)
+		fs.writeFileSync('/tmp/rayna-canvas-debug.log', debugLines.join('\n') + '\n', { flag: 'a' })
+		logger.info(debugLines.join(' | '))
+
+		// ── Generate AI content for slides if multiple products are available ──
+		let aiSlideContent: ExploreSlideAIContent | null = null
+		if (hasMultipleProducts) {
+			try {
+				const aiInput = products.map((p) => ({
+					name: p.name,
+					description: p.short_description || p.description || '',
+					city: p.city || undefined,
+					country: p.country || undefined,
+					price: p.price ? `${p.currency} ${p.price}` : undefined,
+					category: p.category || undefined,
+				}))
+
+				const aiResult = await aiService.generateExploreSlideContent({
+					products: aiInput,
+					product_type: productType,
+					platform: entry?.platform || 'instagram',
+					template_style: 'explore-minimal',
+				})
+				aiSlideContent = aiResult.payload as ExploreSlideAIContent
+			} catch (err: any) {
+				logger.warn(`AI explore-slide content generation failed, using defaults: ${err.message}`)
+			}
+		}
+
+		// ── Slide 1: overview with 3 photo cards ──
+		const overviewPhotos: string[] = []
+		for (let i = 0; i < 3; i++) overviewPhotos.push(localPaths[i % localPaths.length])
+
+		const overviewConfig: Record<string, unknown> = {
+			logoPath: logoLocalPath,
+			website: 'www.raynatours.com',
+			headlineWords: aiSlideContent?.overview?.headline_words || ['Explore.', 'Thrilling.', 'Activities.'],
+			photos: overviewPhotos,
+		}
+
+		if (aiSlideContent?.overview?.stats) {
+			overviewConfig.stats = aiSlideContent.overview.stats.map(
+				(s: ExploreSlideAIContent['overview']['stats'][number]) => ({
+					boldText: s.bold_text + ' ',
+					normalText: s.normal_text,
+					iconType: s.icon_type,
+				}),
+			)
+		}
+
+		logger.info(`[canvas-template] Rendering explore-activities slide 1 (overview) photos=${overviewPhotos.length}`)
+		const slide1Buffer = await canvasTemplateRenderer.render({
+			template: 'explore-activities',
+			config: overviewConfig,
+			format: 'PNG',
+			aspect_ratio: resolvedAspect as any,
+		})
+		urls.push(await this.uploadCanvasBuffer(slide1Buffer))
+
+		// ── Slides 2+: one explore-slide per product ──
+		if (hasMultipleProducts && aiSlideContent?.slides) {
+			// Multi-product mode: each slide shows a different product
+			for (let i = 0; i < products.length; i++) {
+				const product = products[i]
+				const slideData = aiSlideContent.slides.find(
+					(s: ExploreSlideAIContent['slides'][number]) => s.product_index === i,
+				) || aiSlideContent.slides[i]
+
+				const slideConfig: Record<string, unknown> = {
+					logoPath: logoLocalPath,
+					website: 'www.raynatours.com',
+					title: slideData?.title || product.name,
+					subtitle: slideData?.subtitle || product.short_description || '',
+					locationBadge: slideData?.location_badge || product.city || product.country || '',
+					photo: localPaths[i % localPaths.length],
+				}
+
+				logger.info(`[canvas-template] Rendering explore-slide ${i + 2} for product "${product.name}"`)
+				const slideBuffer = await canvasTemplateRenderer.render({
+					template: 'explore-slide',
+					config: slideConfig,
+					format: 'PNG',
+					aspect_ratio: resolvedAspect as any,
+				})
+				urls.push(await this.uploadCanvasBuffer(slideBuffer))
+			}
+		} else {
+			// Single-product fallback: one slide per image
+			const location = data.destination || ''
+			const activityTitle = data.headline || 'Activity'
+			const activitySubtitle = data.subheadline || data.tagline || ''
+
+			for (let i = 0; i < localPaths.length; i++) {
+				const slideConfig: Record<string, unknown> = {
+					logoPath: logoLocalPath,
+					website: 'www.raynatours.com',
+					title: activityTitle,
+					subtitle: activitySubtitle,
+					locationBadge: location,
+					photo: localPaths[i],
+				}
+
+				logger.info(`[canvas-template] Rendering explore-slide ${i + 2}`)
+				const slideBuffer = await canvasTemplateRenderer.render({
+					template: 'explore-slide',
+					config: slideConfig,
+					format: 'PNG',
+					aspect_ratio: resolvedAspect as any,
+				})
+				urls.push(await this.uploadCanvasBuffer(slideBuffer))
+			}
+		}
+
+		return urls
+	}
+
+	/**
+	 * Renders an explore-destinations carousel with multi-product mixing.
+	 * Slide 1 = destination overview (3 photo cards + CTA pill + plane).
+	 * Slides 2+ = one explore-slide per product with AI-generated content.
+	 */
+	private async renderExploreDestinationsCarousel(
+		localPaths: string[],
+		logoLocalPath: string | undefined,
+		templateAspect: string,
+		data: Record<string, string>,
+		entry?: CalendarEntry,
+		products?: Product[],
+	): Promise<string[]> {
+		const urls: string[] = []
+		const hasMultipleProducts = products && products.length > 1
+		const productType = products?.[0]?.product_type || 'destinations'
+		const resolvedAspect = templateAspect === 'auto' ? '4:5' : templateAspect
+
+		logger.info(`[explore-destinations] localPaths=${localPaths.length}, products=${products?.length || 0}`)
+
+		// ── Generate AI content for slides if multiple products are available ──
+		let aiSlideContent: ExploreSlideAIContent | null = null
+		if (hasMultipleProducts) {
+			try {
+				const aiInput = products.map((p) => ({
+					name: p.name,
+					description: p.short_description || p.description || '',
+					city: p.city || undefined,
+					country: p.country || undefined,
+					price: p.price ? `${p.currency} ${p.price}` : undefined,
+					category: p.category || undefined,
+				}))
+
+				const aiResult = await aiService.generateExploreSlideContent({
+					products: aiInput,
+					product_type: productType,
+					platform: entry?.platform || 'instagram',
+					template_style: 'explore-minimal',
+				})
+				aiSlideContent = aiResult.payload as ExploreSlideAIContent
+			} catch (err: any) {
+				logger.warn(`AI explore-destinations content generation failed, using defaults: ${err.message}`)
+			}
+		}
+
+		// ── Slide 1: destination overview with 3 photo cards ──
+		const overviewPhotos: string[] = []
+		for (let i = 0; i < 3; i++) overviewPhotos.push(localPaths[i % localPaths.length])
+
+		// Build card labels from products or AI content
+		const cardLabels: Array<{ title: string; subtitle: string }> = []
+		for (let i = 0; i < 3; i++) {
+			const product = products?.[i % (products?.length || 1)]
+			cardLabels.push({
+				title: product?.name || `Destination ${i + 1}`,
+				subtitle: product?.country || product?.city || 'Country',
+			})
+		}
+
+		const overviewConfig: Record<string, unknown> = {
+			logoPath: logoLocalPath,
+			website: 'www.raynatours.com',
+			headlineText: 'Explore. Experience. Enjoy.',
+			photos: overviewPhotos,
+			cardLabels,
+		}
+
+		logger.info(`[canvas-template] Rendering explore-destinations slide 1 (overview) photos=${overviewPhotos.length}`)
+		const slide1Buffer = await canvasTemplateRenderer.render({
+			template: 'explore-destinations',
+			config: overviewConfig,
+			format: 'PNG',
+			aspect_ratio: resolvedAspect as any,
+		})
+		urls.push(await this.uploadCanvasBuffer(slide1Buffer))
+
+		// ── Slides 2+: one explore-destination-slide per product ──
+		if (hasMultipleProducts) {
+			for (let i = 0; i < products.length; i++) {
+				const product = products[i]
+				const slideData = aiSlideContent?.slides?.find(
+					(s: ExploreSlideAIContent['slides'][number]) => s.product_index === i,
+				) || aiSlideContent?.slides?.[i]
+
+				// Build activities list from product category/description or AI content
+				const activities: string[] = []
+				if (product.category) activities.push(product.category)
+				if (product.city) activities.push(product.city)
+				if (product.country && product.country !== product.city) activities.push(product.country)
+
+				const slideConfig: Record<string, unknown> = {
+					logoPath: logoLocalPath,
+					website: 'www.raynatours.com',
+					title: slideData?.title || product.name,
+					activities: activities.length > 0 ? activities : undefined,
+					photo: localPaths[i % localPaths.length],
+				}
+
+				logger.info(`[canvas-template] Rendering explore-destination-slide ${i + 2} for "${product.name}"`)
+				const slideBuffer = await canvasTemplateRenderer.render({
+					template: 'explore-destination-slide',
+					config: slideConfig,
+					format: 'PNG',
+					aspect_ratio: resolvedAspect as any,
+				})
+				urls.push(await this.uploadCanvasBuffer(slideBuffer))
+			}
+		} else {
+			// Single-product fallback
+			const title = data.headline || data.destination || 'Destination'
+
+			for (let i = 0; i < localPaths.length; i++) {
+				const slideConfig: Record<string, unknown> = {
+					logoPath: logoLocalPath,
+					website: 'www.raynatours.com',
+					title,
+					photo: localPaths[i],
+				}
+
+				logger.info(`[canvas-template] Rendering explore-destination-slide ${i + 2}`)
+				const slideBuffer = await canvasTemplateRenderer.render({
+					template: 'explore-destination-slide',
+					config: slideConfig,
+					format: 'PNG',
+					aspect_ratio: resolvedAspect as any,
+				})
+				urls.push(await this.uploadCanvasBuffer(slideBuffer))
+			}
+		}
+
+		return urls
+	}
+
+	/** Upload a rendered canvas buffer to Cloudinary or save locally */
+	private async uploadCanvasBuffer(buffer: Buffer): Promise<string> {
+		if (cloudinaryService.enabled) {
+			const uploaded = await cloudinaryService.uploadBuffer(buffer, { folder: 'rayna/designed-posters' })
+			return uploaded.secure_url
+		}
+		const fileName = `canvas-poster-${Date.now()}-${Math.round(Math.random() * 1e4)}.png`
+		const destPath = path.join(PROCESSED_DIR, fileName)
+		fs.writeFileSync(destPath, buffer)
+		return `/uploads/processed/${fileName}`
 	}
 
 	// ── HTML / Puppeteer renderer ───────────────────────────────────

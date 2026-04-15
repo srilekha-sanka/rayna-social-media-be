@@ -104,6 +104,30 @@ class PostService {
 		return { statusCode: 200, payload: updated, message: 'Post updated successfully' }
 	}
 
+	/**
+	 * Remove a single media item (slide) from a post's media_urls by index.
+	 * Atomic operation — avoids full-array replacement race conditions.
+	 */
+	async removeMedia(postId: string, index: number): Promise<IServiceResponse> {
+		const post = await Post.findByPk(postId)
+		if (!post) throw new NotFoundError('Post not found')
+
+		if (post.status === 'PUBLISHED') {
+			throw new BadRequestError('Cannot modify media on a published post')
+		}
+
+		const urls = [...(post.media_urls || [])]
+		if (index < 0 || index >= urls.length) {
+			throw new BadRequestError(`Invalid media index ${index}. Post has ${urls.length} media item(s).`)
+		}
+
+		urls.splice(index, 1)
+		await post.update({ media_urls: urls })
+
+		const updated = await Post.findByPk(postId, { include: POST_INCLUDES })
+		return { statusCode: 200, payload: updated, message: 'Media slide removed successfully' }
+	}
+
 	async delete(id: string): Promise<IServiceResponse> {
 		const post = await Post.findByPk(id)
 

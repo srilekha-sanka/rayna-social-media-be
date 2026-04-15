@@ -11,7 +11,7 @@ import { logger } from '../app/common/logger/logging'
 import dbConnSeq from '../db/config/database.config'
 import { errorHandler } from '../app/middlewares/commonErrorHandler'
 import routes from '../app/routes'
-import { seedProducts } from '../db/seeds/product.seed'
+import { seedProductsFromFeed } from '../app/module/product/product-sync.service'
 import { seedDesignTemplates } from '../db/seeds/design-template.seed'
 
 let routingUrl = '/api/v1'
@@ -45,11 +45,19 @@ export class System {
 
 	start = (app: http.Server) => {
 		try {
+			// Add 'canvas' to the renderer ENUM before sync (PostgreSQL won't auto-add ENUM values)
+			// dbConnSeq.query(
+			// 	`DO $$ BEGIN
+			// 		ALTER TYPE "enum_design_templates_renderer" ADD VALUE IF NOT EXISTS 'canvas';
+			// 	EXCEPTION WHEN duplicate_object THEN NULL;
+			// 	END $$;`
+			// ).catch(() => { /* ENUM may not exist yet on first run */ })
+
 			dbConnSeq
 				.sync({ alter: true, logging: false })
 				.then(async () => {
 					logger.info('📁[DB]: Database is connected and synced.')
-					await seedProducts()
+					await seedProductsFromFeed()
 					await seedDesignTemplates()
 					const port: number = process.env.PORT ? +process.env.PORT : 3000
 					app.listen(port, async () => {

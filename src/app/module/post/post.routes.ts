@@ -8,6 +8,7 @@ postRouter.post('/', postController.create)
 postRouter.get('/', postController.findAll)
 postRouter.get('/:id', postController.findById)
 postRouter.patch('/:id', postController.update)
+postRouter.delete('/:id/media/:index', postController.removeMedia)
 postRouter.delete('/:id', postController.delete)
 
 // Approval workflow

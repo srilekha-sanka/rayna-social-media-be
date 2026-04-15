@@ -546,77 +546,91 @@ Generate a bold, clean, premium Instagram travel poster with:
 	},
 
 	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-	// PYTHON + PILLOW TEMPLATES (Advanced image compositing)
+	// CANVAS / SKIA TEMPLATES (Native Node.js, ultra-fast)
 	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-	// ─── 6. Promo Collage (Python) ─────────────────────────────
+	// ─── 6. Explore Activities (Canvas) ───────────────────────
 	{
-		name: 'Promo Collage',
-		slug: 'promo-collage',
-		renderer: 'python' as const,
-		description: 'Promotional offer banner with polaroid-style photo collage, coupon badge, gradient or striped background. Ideal for discount campaigns.',
+		name: 'Explore Activities',
+		slug: 'explore-activities',
+		renderer: 'canvas' as const,
+		description: 'Carousel overview slide: off-white poster with decorative clouds, bird silhouettes, three scattered polaroid photo frames, bold stacked headline, and stats section.',
 		media_type: 'image' as const,
 		prompt_config: {
-			design_prompt: 'Python/Pillow template: promotional banner with coupon code badge and polaroid photo collage. Supports gradient, striped, or image backgrounds.',
-			dynamic_fields: ['headline', 'subheadline', 'coupon_code', 'coupon_label', 'photos', 'accent_color', 'bg_type'],
+			design_prompt: 'Canvas/Skia template: off-white gradient background with cloud and bird PNG decorations, three scattered polaroid-style photo cards with rotations, bold "Explore. Thrilling. Activities." headline tags, and stats row.',
+			dynamic_fields: ['headlineWords', 'photos', 'website', 'stats'],
 		},
 		sort_order: 6,
 	},
 
-	// ─── 7. Hotel Feature (Python) ─────────────────────────────
+	// ─── 7. Explore Destinations (Canvas) ─────────────────────
 	{
-		name: 'Hotel Feature',
-		slug: 'hotel-feature',
-		renderer: 'python' as const,
-		description: 'Full-bleed background image with large headline, coupon badge, and bottom feature bar with icon columns. Great for hotel/stay offers.',
+		name: 'Explore Destinations',
+		slug: 'explore-destinations',
+		renderer: 'canvas' as const,
+		description: 'Carousel cover slide: blue-to-white gradient with three tall destination photo cards, tilted plane image, bird silhouettes, and blue gradient CTA pill. First page of a destination carousel.',
 		media_type: 'image' as const,
 		prompt_config: {
-			design_prompt: 'Python/Pillow template: full-bleed background with gradient overlay, multi-line headline, coupon badge, and bottom feature bar with USP columns.',
-			dynamic_fields: ['pre_headline', 'headline', 'subheadline', 'coupon_code', 'accent_color', 'features'],
+			design_prompt: 'Canvas/Skia template: blue-to-white header gradient, three tall rounded destination photo cards with title/subtitle labels, tilted plane image, bird silhouettes, and "Explore. Experience. Enjoy." blue gradient CTA pill button.',
+			dynamic_fields: ['headlineText', 'photos', 'bgPhoto', 'cardLabels', 'website'],
 		},
 		sort_order: 7,
 	},
 
-	// ─── 8. Phone Mockup (Python) ──────────────────────────────
+	// ─── 8. Explore Destination Slide (Canvas) ────────────────
 	{
-		name: 'Phone Mockup',
-		slug: 'phone-mockup',
-		renderer: 'python' as const,
-		description: 'Scenic background with a phone mockup showing a travel image, bold headline, and accent bars. Perfect for re-engagement and app promotion.',
+		name: 'Explore Destination Slide',
+		slug: 'explore-destination-slide',
+		renderer: 'canvas' as const,
+		description: 'Carousel item slide for destinations: blue sky background with clouds, single large square photo card, destination name pill, and activities row. Used for slides 2+ in the explore-destinations carousel.',
 		media_type: 'image' as const,
 		prompt_config: {
-			design_prompt: 'Python/Pillow template: scenic background with phone device mockup, bold headline, subheadline, and colored accent bars.',
-			dynamic_fields: ['headline', 'subheadline', 'phone_image', 'accent_bars'],
+			design_prompt: 'Canvas/Skia template: blue sky gradient with cloud decorations, single large square photo card (832×832, white border, rounded), destination name in blue gradient pill, activities row with dividers.',
+			dynamic_fields: ['title', 'activities', 'photo', 'website'],
 		},
 		sort_order: 8,
 	},
 
-	// ─── 9. Photo Board (Python) ───────────────────────────────
+	// ─── 9. Explore Slide (Canvas) ────────────────────────────
 	{
-		name: 'Photo Board',
-		slug: 'photo-board',
-		renderer: 'python' as const,
-		description: 'Textured background (wood planks or stripes) with scattered polaroid photos, offer headline, and coupon badge. Magazine-style layout.',
+		name: 'Explore Slide',
+		slug: 'explore-slide',
+		renderer: 'canvas' as const,
+		description: 'Carousel item slide: single large photo card with location badge overlay, activity title tag, and description. Used for slides 2+ in the explore carousel.',
 		media_type: 'image' as const,
 		prompt_config: {
-			design_prompt: 'Python/Pillow template: wood or striped texture background with scattered polaroid-framed photos, offer headline, accent bars, and coupon badge.',
-			dynamic_fields: ['headline', 'subheadline', 'coupon_code', 'photos', 'accent_color', 'bg_texture'],
+			design_prompt: 'Canvas/Skia template: off-white gradient background with clouds and birds, single large photo card with grey border and white inner frame, location badge overlay, dark title tag, and centered subtitle.',
+			dynamic_fields: ['title', 'subtitle', 'locationBadge', 'photo', 'website'],
 		},
 		sort_order: 9,
 	},
 
-	// ─── 10. Minimal CTA (Python) ──────────────────────────────
+	// ─── 10. Summer Holiday (Canvas) ──────────────────────────
 	{
-		name: 'Minimal CTA',
-		slug: 'minimal-cta',
-		renderer: 'python' as const,
-		description: 'Clean full-bleed background with vignette, large headline, CTA button, and optional coupon badge. Versatile for any promotion.',
+		name: 'Summer Holiday',
+		slug: 'summer-holiday',
+		renderer: 'canvas' as const,
+		description: 'Carousel cover: white background with hero photo, four scattered polaroid-style cards, dark-blue wave decoration, "Summer Holiday Packages" headline, and "Book now" button.',
 		media_type: 'image' as const,
 		prompt_config: {
-			design_prompt: 'Python/Pillow template: full-bleed image with vignette and gradient overlay, large bold headline, rounded CTA button, and optional coupon badge.',
-			dynamic_fields: ['headline', 'subheadline', 'cta_text', 'coupon_code', 'accent_color', 'headline_position'],
+			design_prompt: 'Canvas/Skia template: white background with hero image at top, four rotated polaroid photo cards with dashed borders, dark-blue wave blob (Vector 1), Fuzzy Bubbles "Summer Holiday Packages" headline, and white "Book now" pill button.',
+			dynamic_fields: ['heroPhoto', 'photos', 'headlineText', 'ctaText'],
 		},
 		sort_order: 10,
+	},
+
+	// ─── 11. Summer Holiday Slide (Canvas) ─────────────────────
+	{
+		name: 'Summer Holiday Slide',
+		slug: 'summer-holiday-slide',
+		renderer: 'canvas' as const,
+		description: 'Carousel item slide: white background with logo + badge header, Fuzzy Bubbles title & subtitle, large centered photo card with gradient overlay and label, bird silhouette decorations.',
+		media_type: 'image' as const,
+		prompt_config: {
+			design_prompt: 'Canvas/Skia template: white background, Rayna Tours logo with phone and website badges, Fuzzy Bubbles category title (Activities/Cruises) with offer subtitle, large centered photo card with bottom gradient overlay and label text, bird silhouettes.',
+			dynamic_fields: ['title', 'subtitle', 'photo', 'photoLabel', 'website', 'phone'],
+		},
+		sort_order: 11,
 	},
 ]
 

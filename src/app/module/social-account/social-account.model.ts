@@ -27,6 +27,7 @@ interface SocialAccountAttributes extends BaseAttributes {
 	avatar_url: string | null
 	platform_user_id: string | null
 	status: AccountStatus
+	followers_count: number
 	connected_at: Date | null
 	connected_by: string
 	meta: object | null
@@ -42,6 +43,7 @@ interface SocialAccountCreationAttributes
 		| 'avatar_url'
 		| 'platform_user_id'
 		| 'status'
+		| 'followers_count'
 		| 'connected_at'
 		| 'meta'
 	> {}
@@ -105,6 +107,13 @@ class SocialAccount extends BaseModel<SocialAccountAttributes, SocialAccountCrea
 		defaultValue: 'PENDING',
 	})
 	status!: AccountStatus
+
+	@Column({
+		type: DataType.INTEGER,
+		allowNull: false,
+		defaultValue: 0,
+	})
+	followers_count!: number
 
 	@Column({
 		type: DataType.DATE,

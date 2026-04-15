@@ -66,6 +66,18 @@ class PostController extends ResponseService {
 		}
 	}
 
+	removeMedia = async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			const index = parseInt(req.params.index, 10)
+			if (isNaN(index) || index < 0) throw new BadRequestError('Invalid media index')
+
+			const { statusCode, payload, message } = await postService.removeMedia(req.params.id, index)
+			return this.sendResponse(res, statusCode, payload, message)
+		} catch (err) {
+			next(err)
+		}
+	}
+
 	delete = async (req: Request, res: Response, next: NextFunction) => {
 		try {
 			const { statusCode, payload, message } = await postService.delete(req.params.id)
