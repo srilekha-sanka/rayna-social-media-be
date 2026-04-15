@@ -604,6 +604,34 @@ Generate a bold, clean, premium Instagram travel poster with:
 		},
 		sort_order: 9,
 	},
+
+	// ─── 10. Summer Holiday (Canvas) ──────────────────────────
+	{
+		name: 'Summer Holiday',
+		slug: 'summer-holiday',
+		renderer: 'canvas' as const,
+		description: 'Carousel cover: white background with hero photo, four scattered polaroid-style cards, dark-blue wave decoration, "Summer Holiday Packages" headline, and "Book now" button.',
+		media_type: 'image' as const,
+		prompt_config: {
+			design_prompt: 'Canvas/Skia template: white background with hero image at top, four rotated polaroid photo cards with dashed borders, dark-blue wave blob (Vector 1), Fuzzy Bubbles "Summer Holiday Packages" headline, and white "Book now" pill button.',
+			dynamic_fields: ['heroPhoto', 'photos', 'headlineText', 'ctaText'],
+		},
+		sort_order: 10,
+	},
+
+	// ─── 11. Summer Holiday Slide (Canvas) ─────────────────────
+	{
+		name: 'Summer Holiday Slide',
+		slug: 'summer-holiday-slide',
+		renderer: 'canvas' as const,
+		description: 'Carousel item slide: white background with logo + badge header, Fuzzy Bubbles title & subtitle, large centered photo card with gradient overlay and label, bird silhouette decorations.',
+		media_type: 'image' as const,
+		prompt_config: {
+			design_prompt: 'Canvas/Skia template: white background, Rayna Tours logo with phone and website badges, Fuzzy Bubbles category title (Activities/Cruises) with offer subtitle, large centered photo card with bottom gradient overlay and label text, bird silhouettes.',
+			dynamic_fields: ['title', 'subtitle', 'photo', 'photoLabel', 'website', 'phone'],
+		},
+		sort_order: 11,
+	},
 ]
 
 /**

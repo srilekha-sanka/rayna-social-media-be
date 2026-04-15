@@ -174,35 +174,24 @@ async function drawDestinationCard(
 		ctx.fillStyle = grad
 		ctx.fillRect(x, y, w, h)
 	}
-	ctx.restore()
+	// Text drawn inside the clip so it stays within card bounds
 
-	// ── 2. Title text (DM Sans SemiBold 28px, top:28 from card top) ──
-	// Figma: centered horizontally in card, white, nowrap
-	const titleFont = fontString('dm-sans-bold', 28, 700)
-	const titleY = y + 28
-
-	ctx.save()
+	// ── 2. Title text (DM Sans SemiBold 20px) ──
 	ctx.shadowColor = 'rgba(0,0,0,0.5)'
 	ctx.shadowBlur = 4
 	ctx.shadowOffsetX = 1
 	ctx.shadowOffsetY = 1
-	TextRenderer.draw(ctx, x + w / 2, titleY, label.title, {
+	const titleFont = fontString('dm-sans-bold', 20, 700)
+	TextRenderer.draw(ctx, x + w / 2, y + 28, label.title, {
 		font: titleFont, color: '#ffffff', align: 'center', baseline: 'top',
 	})
-	ctx.restore()
 
-	// ── 3. Subtitle text (DM Sans Regular 20px, top:63 from card top) ──
-	const subFont = fontString('dm-sans', 20, 400)
-	const subY = y + 63
-
-	ctx.save()
-	ctx.shadowColor = 'rgba(0,0,0,0.5)'
-	ctx.shadowBlur = 4
-	ctx.shadowOffsetX = 1
-	ctx.shadowOffsetY = 1
-	TextRenderer.draw(ctx, x + w / 2, subY, label.subtitle, {
+	// ── 3. Subtitle text (DM Sans Regular 16px) ──
+	const subFont = fontString('dm-sans', 16, 400)
+	TextRenderer.draw(ctx, x + w / 2, y + 54, label.subtitle, {
 		font: subFont, color: '#ffffff', align: 'center', baseline: 'top',
 	})
+
 	ctx.restore()
 }
 

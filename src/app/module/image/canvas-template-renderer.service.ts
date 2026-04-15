@@ -18,6 +18,8 @@ import { renderTourTravel, type TourTravelConfig } from './canvas-templates/tour
 import { renderExploreActivities, type ExploreActivitiesConfig } from './canvas-templates/explore-activities'
 import { renderExploreSlide, type ExploreSlideConfig } from './canvas-templates/explore-slide'
 import { renderExploreDestinations, type ExploreDestinationsConfig, renderExploreDestinationSlide, type ExploreDestinationSlideConfig } from './canvas-templates/explore-destinations'
+import { renderSummerHoliday, type SummerHolidayConfig } from './canvas-templates/summer-holiday'
+import { renderSummerHolidaySlide, type SummerHolidaySlideConfig } from './canvas-templates/summer-holiday-slide'
 // Logger: use console as fallback, wire up project logger when integrated into src/
 const logger = {
 	info: (...args: unknown[]) => console.log('[canvas]', ...args),
@@ -34,6 +36,8 @@ export type CanvasTemplateName =
 	| 'explore-slide'
 	| 'explore-destinations'
 	| 'explore-destination-slide'
+	| 'summer-holiday'
+	| 'summer-holiday-slide'
 
 export interface CanvasRenderRequest {
 	template: CanvasTemplateName
@@ -70,6 +74,12 @@ const TEMPLATE_REGISTRY: Record<CanvasTemplateName, TemplateRenderFn> = {
 	},
 	'explore-destination-slide': async (config, dims) => {
 		return renderExploreDestinationSlide(config as unknown as ExploreDestinationSlideConfig, dims)
+	},
+	'summer-holiday': async (config, dims) => {
+		return renderSummerHoliday(config as unknown as SummerHolidayConfig, dims)
+	},
+	'summer-holiday-slide': async (config, dims) => {
+		return renderSummerHolidaySlide(config as unknown as SummerHolidaySlideConfig, dims)
 	},
 }
 

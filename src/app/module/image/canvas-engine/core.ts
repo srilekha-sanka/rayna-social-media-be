@@ -36,6 +36,8 @@ const FONT_MAP: Record<string, { file: string; family: string }> = {
 	'dm-sans-medium':{ file: 'DMSans-Medium.woff',           family: 'DM Sans' },
 	'dm-sans-bold':  { file: 'DMSans-Bold.woff',             family: 'DM Sans' },
 	'dela-gothic':   { file: 'DelaGothicOne-Regular.ttf',   family: 'Dela Gothic One' },
+	'fuzzy-bubbles': { file: 'FuzzyBubbles-Regular.ttf',   family: 'Fuzzy Bubbles' },
+	'fuzzy-bubbles-bold': { file: 'FuzzyBubbles-Bold.ttf', family: 'Fuzzy Bubbles' },
 }
 
 let fontsRegistered = false
@@ -91,6 +93,8 @@ export const FONT_PRESETS: Record<string, { name: string; weight: number }> = {
 	'dm-sans-medium':      { name: 'dm-sans', weight: 500 },
 	'dm-sans-bold':        { name: 'dm-sans', weight: 700 },
 	'dela-gothic':         { name: 'dela-gothic', weight: 400 },
+	'fuzzy-bubbles':       { name: 'fuzzy-bubbles', weight: 400 },
+	'fuzzy-bubbles-bold':  { name: 'fuzzy-bubbles-bold', weight: 700 },
 }
 
 /** Resolve a preset name (like 'montserrat-black') to a CSS font string */
