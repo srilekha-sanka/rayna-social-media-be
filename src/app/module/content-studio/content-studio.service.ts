@@ -195,18 +195,20 @@ class ContentStudioService {
 
 		// For explore-activities/destinations or mixed carousels, fetch all plan products
 		// and take exactly ONE image per product (the main/first image).
-		const isExploreCarousel = template.slug === 'explore-activities' || template.slug === 'explore-destinations'
+		const isExploreCarousel = template.slug === 'explore-activities' || template.slug === 'explore-destinations' || template.slug === 'summer-holiday'
 		const needsMultiProductImages = (isMixedCarousel || isExploreCarousel) && contentSource === 'PRODUCT'
 
 		if (needsMultiProductImages) {
-			mixedProducts = await this.fetchMixedCarouselProducts(genConfig)
+			mixedProducts = await this.fetchMixedCarouselProducts(genConfig, entry.content_plan_id)
 
 			if (mixedProducts.length > 0) {
-				// Strictly ONE image per product — the first (main) image
+				// Pick a varied image per product for visual diversity:
+				// Product 0 → image[0], Product 1 → image[1], Product 2 → image[2], etc.
+				// Wraps around if a product has fewer images than its index.
 				mediaUrls = mixedProducts
 					.filter((p) => p.image_urls?.length)
-					.map((p) => p.image_urls[0])
-				console.log(`[compose-debug] Multi-product images: ${mixedProducts.length} products → ${mediaUrls.length} images (1 per product)`)
+					.map((p, idx) => p.image_urls[idx % p.image_urls.length])
+				console.log(`[compose-debug] Multi-product images: ${mixedProducts.length} products → ${mediaUrls.length} images (varied per product)`)
 			}
 		}
 
@@ -604,13 +606,23 @@ Note: Using AI-designed poster with "${template.name}" style.`)
 		const planProductIndex = new Map<string, number>()
 		const enriched = entries.map((e) => {
 			const json = e.toJSON() as any
+			const isMixed = e.description?.includes('MIXED_CAROUSEL')
 			if (!json.product && planProductMap.has(e.content_plan_id)) {
 				const products = planProductMap.get(e.content_plan_id)!
 				const idx = planProductIndex.get(e.content_plan_id) || 0
 				json.product = products[idx % products.length].toJSON()
 				planProductIndex.set(e.content_plan_id, idx + 1)
 			}
-			json.media_urls = json.post?.media_urls?.length ? json.post.media_urls : json.product?.image_urls || []
+			if (json.post?.media_urls?.length) {
+				json.media_urls = json.post.media_urls
+			} else if (isMixed && planProductMap.has(e.content_plan_id)) {
+				const products = planProductMap.get(e.content_plan_id)!
+				json.media_urls = products
+					.filter((p) => p.image_urls?.length)
+					.map((p, idx) => p.image_urls[idx % p.image_urls.length])
+			} else {
+				json.media_urls = json.product?.image_urls || []
+			}
 			return json
 		})
 
@@ -1036,17 +1048,34 @@ Note: Using AI-designed poster with "${template.name}" style.`)
 
 		// Backfill product
 		const json = entry.toJSON() as any
+		const isMixed = entry.description?.includes('MIXED_CAROUSEL')
 		if (!json.product) {
 			const genConfig = json.content_plan?.generation_config as { product_ids?: string[] } | null
 			if (genConfig?.product_ids?.length) {
-				const product = await Product.findOne({
-					where: { id: { [Op.in]: genConfig.product_ids }, is_active: true },
-					attributes: ['id', 'name', 'price', 'offer_label', 'image_urls', 'category'],
-				})
-				if (product) json.product = product.toJSON()
+				if (isMixed) {
+					// Mixed carousel: collect one image per product for preview
+					const allProducts = await Product.findAll({
+						where: { id: { [Op.in]: genConfig.product_ids }, is_active: true },
+						attributes: ['id', 'name', 'price', 'offer_label', 'image_urls', 'category'],
+					})
+					if (allProducts.length) {
+						json.product = allProducts[0].toJSON()
+						json.media_urls = allProducts
+							.filter((p) => p.image_urls?.length)
+							.map((p, idx) => p.image_urls[idx % p.image_urls.length])
+					}
+				} else {
+					const product = await Product.findOne({
+						where: { id: { [Op.in]: genConfig.product_ids }, is_active: true },
+						attributes: ['id', 'name', 'price', 'offer_label', 'image_urls', 'category'],
+					})
+					if (product) json.product = product.toJSON()
+				}
 			}
 		}
-		json.media_urls = json.post?.media_urls?.length ? json.post.media_urls : json.product?.image_urls || []
+		if (!json.media_urls) {
+			json.media_urls = json.post?.media_urls?.length ? json.post.media_urls : json.product?.image_urls || []
+		}
 
 		// Auto-attach suggested times if entry is READY
 		let suggested_times = null
@@ -1198,13 +1227,24 @@ Note: Using AI-designed poster with "${template.name}" style.`)
 		const planProductIndex = new Map<string, number>()
 		const enriched = entries.map((e) => {
 			const json = e.toJSON() as any
+			const isMixed = e.description?.includes('MIXED_CAROUSEL')
 			if (!json.product && planProductMap.has(e.content_plan_id)) {
 				const products = planProductMap.get(e.content_plan_id)!
 				const idx = planProductIndex.get(e.content_plan_id) || 0
 				json.product = products[idx % products.length].toJSON()
 				planProductIndex.set(e.content_plan_id, idx + 1)
 			}
-			json.media_urls = json.post?.media_urls?.length ? json.post.media_urls : json.product?.image_urls || []
+			if (json.post?.media_urls?.length) {
+				json.media_urls = json.post.media_urls
+			} else if (isMixed && planProductMap.has(e.content_plan_id)) {
+				// Mixed carousel preview: one image per product for visual variety
+				const products = planProductMap.get(e.content_plan_id)!
+				json.media_urls = products
+					.filter((p) => p.image_urls?.length)
+					.map((p, idx) => p.image_urls[idx % p.image_urls.length])
+			} else {
+				json.media_urls = json.product?.image_urls || []
+			}
 			return json
 		})
 
@@ -1299,11 +1339,20 @@ Note: Using AI-designed poster with "${template.name}" style.`)
 		let productIndex = 0
 		const enriched = entries.map((e) => {
 			const json = e.toJSON() as any
+			const isMixed = e.description?.includes('MIXED_CAROUSEL')
 			if (!json.product && fallbackProducts?.length) {
 				json.product = fallbackProducts[productIndex % fallbackProducts.length].toJSON()
 				productIndex++
 			}
-			json.media_urls = json.post?.media_urls?.length ? json.post.media_urls : json.product?.image_urls || []
+			if (json.post?.media_urls?.length) {
+				json.media_urls = json.post.media_urls
+			} else if (isMixed && fallbackProducts?.length) {
+				json.media_urls = fallbackProducts
+					.filter((p) => p.image_urls?.length)
+					.map((p, idx) => p.image_urls[idx % p.image_urls.length])
+			} else {
+				json.media_urls = json.product?.image_urls || []
+			}
 			return json
 		})
 
@@ -1334,22 +1383,38 @@ Note: Using AI-designed poster with "${template.name}" style.`)
 
 	private async fetchMixedCarouselProducts(
 		genConfig: { product_ids?: string[]; product_type?: string } | null,
+		planId?: string,
 	): Promise<Product[]> {
-		if (!genConfig) return []
-		const where: any = { is_active: true }
-		if (genConfig.product_ids?.length) {
-			where.id = { [Op.in]: genConfig.product_ids }
-		} else if (genConfig.product_type) {
-			where.product_type = genConfig.product_type
-		} else {
-			return []
+		const attrs = ['id', 'name', 'description', 'short_description', 'price', 'currency', 'offer_label', 'category', 'city', 'country', 'image_urls', 'highlights', 'product_type']
+
+		// Primary: use genConfig product_ids or product_type
+		if (genConfig) {
+			const where: any = { is_active: true }
+			if (genConfig.product_ids?.length) {
+				where.id = { [Op.in]: genConfig.product_ids }
+			} else if (genConfig.product_type) {
+				where.product_type = genConfig.product_type
+			}
+			if (where.id || where.product_type) {
+				const products = await Product.findAll({ where, attributes: attrs, order: [['createdAt', 'DESC']], limit: 10 })
+				if (products.length > 1) return products
+			}
 		}
-		return Product.findAll({
-			where,
-			attributes: ['id', 'name', 'description', 'short_description', 'price', 'currency', 'offer_label', 'category', 'city', 'country', 'image_urls', 'highlights', 'product_type'],
-			order: [['createdAt', 'DESC']],
-			limit: 10,
-		})
+
+		// Fallback: collect distinct products from sibling entries in the same plan
+		if (planId) {
+			const siblingEntries = await CalendarEntry.findAll({
+				where: { content_plan_id: planId, is_active: true },
+				attributes: ['product_id'],
+			})
+			const productIds = [...new Set(siblingEntries.map((e) => e.product_id).filter(Boolean))] as string[]
+			if (productIds.length > 1) {
+				console.log(`[compose-debug] fetchMixedCarouselProducts fallback: found ${productIds.length} products from plan entries`)
+				return Product.findAll({ where: { id: { [Op.in]: productIds }, is_active: true }, attributes: attrs, order: [['createdAt', 'DESC']], limit: 10 })
+			}
+		}
+
+		return []
 	}
 
 	private async fetchActiveCampaigns(startDate: string, endDate: string): Promise<Campaign[]> {
@@ -1575,7 +1640,7 @@ Platform: ${entry.platform} | Format: ${entry.post_type} | Type: ${entry.content
 	// Internal-only templates that should not appear in the user-facing template list.
 	// These are sub-templates used programmatically by other templates (e.g., explore-slide
 	// is rendered automatically as part of the explore-activities carousel).
-	private static readonly INTERNAL_TEMPLATE_SLUGS = ['explore-slide', 'explore-destination-slide']
+	private static readonly INTERNAL_TEMPLATE_SLUGS = ['explore-slide', 'explore-destination-slide', 'summer-holiday-slide']
 
 	async listDesignTemplates(mediaType?: string): Promise<IServiceResponse> {
 		const where: WhereOptions = {

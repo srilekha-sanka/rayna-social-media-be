@@ -792,6 +792,14 @@ Note: Using AI-generated imagery.`)
 				return result
 			}
 
+			// ── summer-holiday: cover + slide carousel ──
+			if (template.slug === 'summer-holiday') {
+				const result = await this.renderSummerHolidayCarousel(
+					localPaths, logoLocalPath, templateAspect, data, entry, products,
+				)
+				return result
+			}
+
 			// ── Default: single-image canvas templates ──
 			switch (template.slug) {
 				default:
@@ -1081,6 +1089,102 @@ Note: Using AI-generated imagery.`)
 					config: slideConfig,
 					format: 'PNG',
 					aspect_ratio: resolvedAspect as any,
+				})
+				urls.push(await this.uploadCanvasBuffer(slideBuffer))
+			}
+		}
+
+		return urls
+	}
+
+	/**
+	 * Renders a summer-holiday carousel.
+	 * Slide 1 = cover (hero background + 4 polaroid cards + wave + headline).
+	 * Slides 2+ = one summer-holiday-slide per remaining product image.
+	 */
+	private async renderSummerHolidayCarousel(
+		localPaths: string[],
+		logoLocalPath: string | undefined,
+		templateAspect: string,
+		data: Record<string, string>,
+		entry?: CalendarEntry,
+		products?: Product[],
+	): Promise<string[]> {
+		const urls: string[] = []
+		const hasMultipleProducts = products && products.length > 1
+		const resolvedAspect = (templateAspect === 'auto' ? '4:5' : templateAspect) as any
+
+		logger.info(`[summer-holiday] localPaths=${localPaths.length}, products=${products?.length || 0}`)
+
+		// ── Slide 1: Summer Holiday cover ──
+		// First image → heroPhoto (background), up to 4 images → polaroid cards
+		const heroPhoto = localPaths[0]
+		const polaroidPhotos = localPaths.slice(0, 4)
+
+		const coverConfig: Record<string, unknown> = {
+			heroPhoto,
+			photos: polaroidPhotos,
+			headlineText: data.headline || 'Summer Holiday Packages',
+			ctaText: 'Book now',
+			headlineColor: '#0e3872',
+		}
+
+		logger.info(`[canvas-template] Rendering summer-holiday cover heroPhoto=${!!heroPhoto} polaroids=${polaroidPhotos.length}`)
+		const coverBuffer = await canvasTemplateRenderer.render({
+			template: 'summer-holiday',
+			config: coverConfig,
+			format: 'PNG',
+			aspect_ratio: resolvedAspect,
+		})
+		urls.push(await this.uploadCanvasBuffer(coverBuffer))
+
+		// ── Slides 2+: one summer-holiday-slide per product ──
+		if (hasMultipleProducts) {
+			for (let i = 0; i < products.length; i++) {
+				const product = products[i]
+				const slideConfig: Record<string, unknown> = {
+					logoPath: logoLocalPath,
+					website: 'www.raynatours.com',
+					phone: '011-348885',
+					title: product.category || product.product_type || 'Activities',
+					subtitle: product.offer_label || `From ${product.currency} ${product.price}`,
+					photo: localPaths[i % localPaths.length],
+					photoLabel: product.name || '',
+					titleColor: '#596d89',
+				}
+
+				logger.info(`[canvas-template] Rendering summer-holiday-slide ${i + 2} for "${product.name}"`)
+				const slideBuffer = await canvasTemplateRenderer.render({
+					template: 'summer-holiday-slide',
+					config: slideConfig,
+					format: 'PNG',
+					aspect_ratio: resolvedAspect,
+				})
+				urls.push(await this.uploadCanvasBuffer(slideBuffer))
+			}
+		} else {
+			// Single-product fallback: one slide per remaining image
+			const title = data.headline || 'Activities'
+			const subtitle = data.subheadline || data.tagline || ''
+
+			for (let i = 1; i < localPaths.length; i++) {
+				const slideConfig: Record<string, unknown> = {
+					logoPath: logoLocalPath,
+					website: 'www.raynatours.com',
+					phone: '011-348885',
+					title,
+					subtitle,
+					photo: localPaths[i],
+					photoLabel: '',
+					titleColor: '#596d89',
+				}
+
+				logger.info(`[canvas-template] Rendering summer-holiday-slide ${i + 1}`)
+				const slideBuffer = await canvasTemplateRenderer.render({
+					template: 'summer-holiday-slide',
+					config: slideConfig,
+					format: 'PNG',
+					aspect_ratio: resolvedAspect,
 				})
 				urls.push(await this.uploadCanvasBuffer(slideBuffer))
 			}
