@@ -800,6 +800,14 @@ Note: Using AI-generated imagery.`)
 				return result
 			}
 
+			// ── itineraries: cover + day slides carousel ──
+			if (template.slug === 'itineraries') {
+				const result = await this.renderItinerariesCarousel(
+					localPaths, logoLocalPath, templateAspect, data, entry, products,
+				)
+				return result
+			}
+
 			// ── Default: single-image canvas templates ──
 			switch (template.slug) {
 				default:
@@ -1182,6 +1190,105 @@ Note: Using AI-generated imagery.`)
 				logger.info(`[canvas-template] Rendering summer-holiday-slide ${i + 1}`)
 				const slideBuffer = await canvasTemplateRenderer.render({
 					template: 'summer-holiday-slide',
+					config: slideConfig,
+					format: 'PNG',
+					aspect_ratio: resolvedAspect,
+				})
+				urls.push(await this.uploadCanvasBuffer(slideBuffer))
+			}
+		}
+
+		return urls
+	}
+
+	/**
+	 * Renders an itineraries carousel.
+	 * Slide 1 = cover (skyline hero + 4 polaroid cards + stats bar + headline).
+	 * Slides 2+ = one itineraries-slide per product (Day 1, Day 2, etc.) with split photo.
+	 */
+	private async renderItinerariesCarousel(
+		localPaths: string[],
+		logoLocalPath: string | undefined,
+		templateAspect: string,
+		data: Record<string, string>,
+		entry?: CalendarEntry,
+		products?: Product[],
+	): Promise<string[]> {
+		const urls: string[] = []
+		const hasMultipleProducts = products && products.length > 1
+		const resolvedAspect = (templateAspect === 'auto' ? '4:5' : templateAspect) as any
+
+		logger.info(`[itineraries] localPaths=${localPaths.length}, products=${products?.length || 0}`)
+
+		// ── Slide 1: Itineraries cover ──
+		// First image → bgPhoto (skyline hero), up to 4 images → polaroid cards
+		const bgPhoto = localPaths[0]
+		const polaroidPhotos = localPaths.slice(0, 4)
+
+		const coverConfig: Record<string, unknown> = {
+			bgPhoto,
+			photos: polaroidPhotos,
+			headlineText: data.headline || 'Your holiday to Dubai got easier',
+			headlineColor: '#0e3872',
+			logoPath: logoLocalPath,
+			website: 'www.raynatours.com',
+		}
+
+		logger.info(`[canvas-template] Rendering itineraries cover bgPhoto=${!!bgPhoto} polaroids=${polaroidPhotos.length}`)
+		const coverBuffer = await canvasTemplateRenderer.render({
+			template: 'itineraries',
+			config: coverConfig,
+			format: 'PNG',
+			aspect_ratio: resolvedAspect,
+		})
+		urls.push(await this.uploadCanvasBuffer(coverBuffer))
+
+		// ── Slides 2+: one itineraries-slide per product/day ──
+		if (hasMultipleProducts) {
+			for (let i = 0; i < products.length; i++) {
+				const product = products[i]
+				// For split photo: use current image + next image (wrapping)
+				const leftPhoto = localPaths[i % localPaths.length]
+				const rightPhoto = localPaths[(i + 1) % localPaths.length]
+
+				const slideConfig: Record<string, unknown> = {
+					dayNumber: i + 1,
+					subtitle: product.name || '',
+					photos: [leftPhoto, rightPhoto],
+					logoPath: logoLocalPath,
+					website: 'www.raynatours.com',
+					titleColor: '#596d89',
+				}
+
+				logger.info(`[canvas-template] Rendering itineraries-slide ${i + 2} (Day ${i + 1}) for "${product.name}"`)
+				const slideBuffer = await canvasTemplateRenderer.render({
+					template: 'itineraries-slide',
+					config: slideConfig,
+					format: 'PNG',
+					aspect_ratio: resolvedAspect,
+				})
+				urls.push(await this.uploadCanvasBuffer(slideBuffer))
+			}
+		} else {
+			// Single-product fallback: one slide per remaining image
+			const subtitle = data.subheadline || data.headline || ''
+
+			for (let i = 1; i < localPaths.length; i++) {
+				const leftPhoto = localPaths[i]
+				const rightPhoto = localPaths[(i + 1) % localPaths.length]
+
+				const slideConfig: Record<string, unknown> = {
+					dayNumber: i,
+					subtitle,
+					photos: [leftPhoto, rightPhoto],
+					logoPath: logoLocalPath,
+					website: 'www.raynatours.com',
+					titleColor: '#596d89',
+				}
+
+				logger.info(`[canvas-template] Rendering itineraries-slide ${i + 1} (Day ${i})`)
+				const slideBuffer = await canvasTemplateRenderer.render({
+					template: 'itineraries-slide',
 					config: slideConfig,
 					format: 'PNG',
 					aspect_ratio: resolvedAspect,

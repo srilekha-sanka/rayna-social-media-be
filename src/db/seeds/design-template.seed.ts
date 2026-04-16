@@ -632,7 +632,20 @@ Generate a bold, clean, premium Instagram travel poster with:
 		},
 		sort_order: 11,
 	},
-]
+
+	// ─── 12. Itineraries (Canvas) ────────────────────────────
+	{
+		name: 'Itineraries',
+		slug: 'itineraries',
+		renderer: 'canvas' as const,
+		description: 'Itinerary poster: skyline hero fading to white, four scattered polaroid photo cards, stats bar with rated/experiences/customers icons, bold headline, schedule sub-row, and branded bottom bar with website pill.',
+		media_type: 'image' as const,
+		prompt_config: {
+			design_prompt: 'Canvas/Skia template: Dubai skyline hero photo at top fading to white via gradient, four scattered polaroid-style photo cards with dashed borders and rotations, stats bar with star/badge/people icons and metrics, large centered headline "Your holiday to Dubai got easier", sub-row with schedule details separated by dividers, bottom bar with brand logo and website pill.',
+			dynamic_fields: ['bgPhoto', 'photos', 'headlineText', 'stats', 'subTexts', 'logoPath', 'website'],
+		},
+		sort_order: 12,
+	},]
 
 /**
  * Smart seed: upserts by slug.
