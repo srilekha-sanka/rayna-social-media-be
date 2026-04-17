@@ -2,9 +2,9 @@
  * Template: Explore Activities
  * ============================
  * Clean white-to-gray gradient poster with decorative cloud blobs,
- * bold stacked headline tags, stats section with icons, three
- * scattered polaroid-style photo cards with rotations, and bird
- * silhouettes.
+ * bold stacked headline tags, three scattered polaroid-style photo
+ * cards with rotations, bird silhouettes, and a horizontal stats
+ * footer bar at the bottom.
  *
  * Reference: Figma node 364:4879 (Instagram 1080×1350)
  *
@@ -22,14 +22,12 @@ import fs from 'fs'
 import {
 	createTemplateCanvas,
 	INSTAGRAM,
-	preset,
 	fontString,
 	type Dimensions,
 	type SKRSContext2D,
 } from '../canvas-engine/core'
 import { TextRenderer } from '../canvas-engine/text'
 import { Effects } from '../canvas-engine/effects'
-import { Components } from '../canvas-engine/components'
 
 // ── Asset Paths ───────────────────────────────────────────────
 const ASSETS_DIR = path.resolve(__dirname, '../../../../../assets/images')
@@ -68,65 +66,80 @@ async function drawPNG(
 	} catch { /* skip if asset not found */ }
 }
 
-// ── Icon Helpers ──────────────────────────────────────────────
+// ── Stat Icon Helpers ────────────────────────────────────────
 
-function drawStarIcon(ctx: SKRSContext2D, cx: number, cy: number, r: number): void {
+function drawStatIcon(
+	ctx: SKRSContext2D,
+	cx: number, cy: number,
+	type: 'star' | 'shield' | 'gift',
+): void {
+	const r = 16
+
 	ctx.save()
-	ctx.fillStyle = '#f4c430'
+
+	let bgColor: string
+	let iconColor: string
+	switch (type) {
+		case 'star':
+			bgColor = '#FFF3DF'
+			iconColor = '#F5A623'
+			break
+		case 'shield':
+			bgColor = '#E3EEFF'
+			iconColor = '#2563EB'
+			break
+		case 'gift':
+			bgColor = '#E8F5E9'
+			iconColor = '#2E7D32'
+			break
+	}
+
+	// Circle background
 	ctx.beginPath()
-	for (let i = 0; i < 10; i++) {
-		const angle = (i * 36 - 90) * Math.PI / 180
-		const rad = i % 2 === 0 ? r : r * 0.45
-		const px = cx + Math.cos(angle) * rad
-		const py = cy + Math.sin(angle) * rad
-		if (i === 0) ctx.moveTo(px, py)
-		else ctx.lineTo(px, py)
+	ctx.arc(cx, cy, r, 0, Math.PI * 2)
+	ctx.fillStyle = bgColor
+	ctx.fill()
+
+	// Icon symbol
+	ctx.fillStyle = iconColor
+	switch (type) {
+		case 'star':
+			drawStar(ctx, cx, cy - 1, 8, 4, 5)
+			break
+		case 'shield':
+			drawStar(ctx, cx, cy - 2, 9, 4, 5)
+			break
+		case 'gift':
+			// Person/gift icon
+			ctx.beginPath()
+			ctx.arc(cx, cy - 5, 4, 0, Math.PI * 2)
+			ctx.fill()
+			ctx.beginPath()
+			ctx.arc(cx, cy + 10, 8, Math.PI + 0.3, -0.3)
+			ctx.fill()
+			break
+	}
+
+	ctx.restore()
+}
+
+function drawStar(
+	ctx: SKRSContext2D,
+	cx: number, cy: number,
+	outerR: number, innerR: number, points: number,
+): void {
+	ctx.beginPath()
+	for (let i = 0; i < points * 2; i++) {
+		const r = i % 2 === 0 ? outerR : innerR
+		const angle = (Math.PI / points) * i - Math.PI / 2
+		const x = cx + r * Math.cos(angle)
+		const y = cy + r * Math.sin(angle)
+		if (i === 0) ctx.moveTo(x, y)
+		else ctx.lineTo(x, y)
 	}
 	ctx.closePath()
 	ctx.fill()
-	ctx.restore()
 }
-
-function drawShieldIcon(ctx: SKRSContext2D, cx: number, cy: number, r: number): void {
-	ctx.save()
-	ctx.fillStyle = '#3355cc'
-	ctx.beginPath()
-	ctx.moveTo(cx, cy - r)
-	ctx.lineTo(cx + r, cy - r * 0.55)
-	ctx.lineTo(cx + r, cy + r * 0.1)
-	ctx.quadraticCurveTo(cx + r, cy + r * 0.7, cx, cy + r)
-	ctx.quadraticCurveTo(cx - r, cy + r * 0.7, cx - r, cy + r * 0.1)
-	ctx.lineTo(cx - r, cy - r * 0.55)
-	ctx.closePath()
-	ctx.fill()
-	ctx.restore()
-}
-
-function drawGiftIcon(ctx: SKRSContext2D, cx: number, cy: number, r: number): void {
-	ctx.save()
-	// Bottom box
-	ctx.fillStyle = '#e67e22'
-	const bw = r * 1.5, bh = r * 0.9
-	Effects.roundedRectPath(ctx, cx - bw / 2, cy + r * 0.1, bw, bh, 3)
-	ctx.fill()
-	// Middle box
-	const mw = r * 1.1, mh = r * 0.55
-	Effects.roundedRectPath(ctx, cx - mw / 2, cy - r * 0.35, mw, mh, 2)
-	ctx.fill()
-	// Top handle
-	ctx.fillStyle = '#f39c12'
-	const tw = r * 0.5, th = r * 0.55
-	Effects.roundedRectPath(ctx, cx - tw / 2, cy - r * 0.85, tw, th, 2)
-	ctx.fill()
-	ctx.restore()
-}
-
-const ICON_DRAWERS: Record<string, (ctx: SKRSContext2D, cx: number, cy: number, r: number) => void> = {
-	star: drawStarIcon,
-	shield: drawShieldIcon,
-	gift: drawGiftIcon,
-}
-
 
 // ── Card System ───────────────────────────────────────────────
 
@@ -141,42 +154,54 @@ interface CardDef {
 	rotation: number
 }
 
-// Right column origin in Figma coords (1080×1350)
-const RC_X = 524
-const RC_Y = 208
+// Card-stack origin: the card-stack sits at the right of content-row
+// content-row: left:52, top:208, width:946, justify-content:space-between
+// card-stack: width:474, so its left edge = 52 + 946 - 474 = 524
+const CS_X = 524   // card-stack absolute left
+const CS_Y = 208   // card-stack absolute top (= content-row top)
 
 const CARDS: CardDef[] = [
-	// Card 1: Desert Safari (+7.69°)
+	// Card 1 (+7.69°)
+	// HTML shadow wrapper: left:5.1 top:-18.17 w:428.116 h:341.275
+	// HTML main wrapper: left:32.5 top:-37.33 w:437.948 h:337.37
+	// Shadow border: w:392.671 h:291.369 border:4.262 radius:8.142
+	// Main card: w:403.318 h:285.992 radius:9.025, photo: w:374.541 h:257.215 radius:9.025
 	{
-		frameCX: RC_X - 59 + 490.8 / 2,
-		frameCY: RC_Y - 36.7 + 391.2 / 2,
-		frameW: 450.2, frameH: 334, frameBorder: 4.88, frameR: 9.34,
-		innerCX: RC_X - 27.6 + 502.2 / 2,
-		innerCY: RC_Y - 58.6 + 386.8 / 2,
-		innerW: 462.4, innerH: 328, innerR: 10.34,
-		photoW: 429.4, photoH: 295, photoR: 10.34,
+		frameCX: CS_X + 5.1 + 428.116 / 2,
+		frameCY: CS_Y + (-18.17) + 341.275 / 2,
+		frameW: 392.671, frameH: 291.369, frameBorder: 4.262, frameR: 8.142,
+		innerCX: CS_X + 32.5 + 437.948 / 2,
+		innerCY: CS_Y + (-37.33) + 337.37 / 2,
+		innerW: 403.318, innerH: 285.992, innerR: 9.025,
+		photoW: 374.541, photoH: 257.215, photoR: 9.025,
 		rotation: 7.69,
 	},
-	// Card 2: Kayaking (0°)
+	// Card 2 (0°)
+	// HTML shadow: left:24.17 top:314.97 w:392.671 h:291.369 (no rotation)
+	// HTML main: left:48.05 top:292.41 w:403.318 h:285.992
 	{
-		frameCX: RC_X - 37.2 + 450.2 / 2,
-		frameCY: RC_Y + 345.2 + 334 / 2,
-		frameW: 450.2, frameH: 334, frameBorder: 4.88, frameR: 9.34,
-		innerCX: RC_X - 9.8 + 462.4 / 2,
-		innerCY: RC_Y + 319.4 + 328 / 2,
-		innerW: 462.4, innerH: 328, innerR: 10.34,
-		photoW: 429.4, photoH: 295, photoR: 10.34,
+		frameCX: CS_X + 24.17 + 392.671 / 2,
+		frameCY: CS_Y + 314.97 + 291.369 / 2,
+		frameW: 392.671, frameH: 291.369, frameBorder: 4.262, frameR: 8.142,
+		innerCX: CS_X + 48.05 + 403.318 / 2,
+		innerCY: CS_Y + 292.41 + 285.992 / 2,
+		innerW: 403.318, innerH: 285.992, innerR: 9.025,
+		photoW: 374.541, photoH: 257.215, photoR: 9.025,
 		rotation: 0,
 	},
-	// Card 3: Zipline (-4.81°)
+	// Card 3 (-4.81°)
+	// HTML shadow wrapper: left:48.55 top:612.58 w:416.486 h:323.865
+	// HTML main wrapper: left:10.51 top:592.69 w:427.938 h:320.345
+	// Shadow border: w:393.395 h:291.906 border:4.27 radius:8.157
+	// Main card: w:405.268 h:287.375 radius:9.069, photo: w:376.352 h:258.458 radius:9.069
 	{
-		frameCX: RC_X - 9.2 + 477.6 / 2,
-		frameCY: RC_Y + 686.4 + 371.4 / 2,
-		frameW: 451, frameH: 334.6, frameBorder: 4.9, frameR: 9.36,
-		innerCX: RC_X - 52.8 + 490.6 / 2,
-		innerCY: RC_Y + 663.6 + 367.2 / 2,
-		innerW: 464.6, innerH: 329.4, innerR: 10.4,
-		photoW: 431.5, photoH: 296.4, photoR: 10.4,
+		frameCX: CS_X + 48.55 + 416.486 / 2,
+		frameCY: CS_Y + 612.58 + 323.865 / 2,
+		frameW: 393.395, frameH: 291.906, frameBorder: 4.27, frameR: 8.157,
+		innerCX: CS_X + 10.51 + 427.938 / 2,
+		innerCY: CS_Y + 592.69 + 320.345 / 2,
+		innerW: 405.268, innerH: 287.375, innerR: 9.069,
+		photoW: 376.352, photoH: 258.458, photoR: 9.069,
 		rotation: -4.81,
 	},
 ]
@@ -210,16 +235,12 @@ async function drawCard(ctx: SKRSContext2D, card: CardDef, photoPath?: string): 
 	// ── 3. Photo inside card ──
 	if (photoPath) {
 		try {
-			const exists = fs.existsSync(photoPath)
-			const size = exists ? fs.statSync(photoPath).size : 0
-			fs.appendFileSync('/tmp/rayna-canvas-debug.log', `[explore-activities] Card photo: path=${photoPath}, exists=${exists}, size=${size}\n`)
 			const buf = fs.readFileSync(photoPath)
 			const photo = await loadImage(buf)
 			ctx.save()
 			ctx.translate(card.innerCX, card.innerCY)
 			ctx.rotate(rot)
 
-			// Clip to photo area with rounded corners
 			Effects.roundedRectPath(ctx, -card.photoW / 2, -card.photoH / 2, card.photoW, card.photoH, card.photoR)
 			ctx.clip()
 
@@ -236,8 +257,7 @@ async function drawCard(ctx: SKRSContext2D, card: CardDef, photoPath?: string): 
 			}
 			ctx.drawImage(photo, -dw / 2, -dh / 2, dw, dh)
 			ctx.restore()
-		} catch (err: any) {
-			fs.appendFileSync('/tmp/rayna-canvas-debug.log', `[explore-activities] FAILED to load card photo: ${photoPath} — ${err.message}\n`)
+		} catch {
 			ctx.save()
 			ctx.translate(card.innerCX, card.innerCY)
 			ctx.rotate(rot)
@@ -246,7 +266,6 @@ async function drawCard(ctx: SKRSContext2D, card: CardDef, photoPath?: string): 
 			ctx.restore()
 		}
 	} else {
-		// Placeholder gradient
 		ctx.save()
 		ctx.translate(card.innerCX, card.innerCY)
 		ctx.rotate(rot)
@@ -254,6 +273,39 @@ async function drawCard(ctx: SKRSContext2D, card: CardDef, photoPath?: string): 
 		ctx.fillRect(-card.photoW / 2, -card.photoH / 2, card.photoW, card.photoH)
 		ctx.restore()
 	}
+}
+
+// ── Globe icon for website pill ──────────────────────────────
+
+function drawGlobeIcon(
+	ctx: SKRSContext2D,
+	cx: number, cy: number,
+	size: number,
+): void {
+	const r = size / 2
+	ctx.save()
+	ctx.strokeStyle = '#444444'
+	ctx.lineWidth = 1.4
+
+	ctx.beginPath()
+	ctx.arc(cx, cy, r, 0, Math.PI * 2)
+	ctx.stroke()
+
+	ctx.beginPath()
+	ctx.ellipse(cx, cy, r * 0.38, r, 0, 0, Math.PI * 2)
+	ctx.stroke()
+
+	ctx.beginPath()
+	ctx.moveTo(cx - r, cy)
+	ctx.lineTo(cx + r, cy)
+	ctx.stroke()
+
+	ctx.beginPath()
+	ctx.moveTo(cx, cy - r)
+	ctx.lineTo(cx, cy + r)
+	ctx.stroke()
+
+	ctx.restore()
 }
 
 // ── Render Function ───────────────────────────────────────────
@@ -269,11 +321,11 @@ export async function renderExploreActivities(
 	// Defaults
 	const headlineWords = config.headlineWords || ['Explore.', 'Thrilling.', 'Activities.']
 	const website = config.website || 'www.raynatours.com'
-	const headlineBgColor = config.headlineColor || '#2b2b2b'
+	const headlineBgColor = config.headlineColor || '#535353'
 	const stats = config.stats || [
 		{ boldText: '4.9+ Rated ', normalText: 'Experiences', iconType: 'star' as const },
 		{ boldText: '1000+ Experiences ', normalText: 'to choose from', iconType: 'shield' as const },
-		{ boldText: '1L+ Customers ', normalText: 'served & counting', iconType: 'gift' as const },
+		{ boldText: '25M+ Customer ', normalText: 'served & counting', iconType: 'gift' as const },
 	]
 
 	// ═══════════════════════════════════════════════════════════
@@ -286,85 +338,84 @@ export async function renderExploreActivities(
 	ctx.fillRect(0, 0, W, H)
 
 	// ═══════════════════════════════════════════════════════════
-	// 2. Decorative clouds (real PNG — prominent, clearly visible)
+	// 2. Decorative clouds (real PNG)
 	// ═══════════════════════════════════════════════════════════
-	await drawPNG(ctx, CLOUD_PNG, -80, -50, 500, 260, 0.90)     // top-left large
-	await drawPNG(ctx, CLOUD_PNG, 680, -20, 420, 220, 0.80)     // top-right
-	await drawPNG(ctx, CLOUD_PNG, 500, 280, 400, 200, 0.65)     // mid-right
-	await drawPNG(ctx, CLOUD_PNG, -60, 520, 420, 210, 0.60)     // mid-left
-	await drawPNG(ctx, CLOUD_PNG, 60, 900, 480, 240, 0.55)      // bottom-left large
-	await drawPNG(ctx, CLOUD_PNG, 650, 1050, 380, 190, 0.50)    // bottom-right
+	await drawPNG(ctx, CLOUD_PNG, -80, -50, 500, 260, 0.90)
+	await drawPNG(ctx, CLOUD_PNG, 680, -20, 420, 220, 0.80)
+	await drawPNG(ctx, CLOUD_PNG, 500, 280, 400, 200, 0.65)
+	await drawPNG(ctx, CLOUD_PNG, -60, 520, 420, 210, 0.60)
+	await drawPNG(ctx, CLOUD_PNG, 60, 900, 480, 240, 0.55)
+	await drawPNG(ctx, CLOUD_PNG, 650, 1050, 380, 190, 0.50)
 
 	// ═══════════════════════════════════════════════════════════
-	// 3. Logo (top-left — Figma: 52, 52, 194×72)
+	// 3. Top bar: Logo (left) + Website pill (right)
+	//    Matching itineraries/summer-holiday layout
 	// ═══════════════════════════════════════════════════════════
+
+	// Logo (left side — Figma: 52, 52, 194×72)
 	if (config.logoPath) {
-		await Components.placeLogo(ctx, config.logoPath, 52, 52, 194, 72)
+		try {
+			const logoBuf = fs.readFileSync(config.logoPath)
+			const logo = await loadImage(logoBuf)
+			const maxLogoH = 72
+			const maxLogoW = 194
+			const ratio = Math.min(maxLogoW / logo.width, maxLogoH / logo.height)
+			const lw = Math.round(logo.width * ratio)
+			const lh = Math.round(logo.height * ratio)
+			ctx.drawImage(logo, 52, 52, lw, lh)
+		} catch { /* skip */ }
 	} else {
-		ctx.save()
-		ctx.font = preset('playlist', 42)
-		ctx.textAlign = 'left'
-		ctx.textBaseline = 'top'
-		ctx.fillStyle = '#C0392B'
-		ctx.fillText('Rayna', 52, 52)
-		const rw = ctx.measureText('Rayna').width
-		ctx.font = preset('montserrat', 11)
-		ctx.fillStyle = '#888888'
-		ctx.fillText('tours', 52 + rw + 4, 78)
-		ctx.restore()
+		const brandFont = fontString('dm-sans-bold', 28, 700)
+		TextRenderer.draw(ctx, 52, 88, 'RAYNA TOURS', {
+			font: brandFont,
+			color: '#0c2461',
+			align: 'left',
+			baseline: 'middle',
+		})
 	}
 
-	// ═══════════════════════════════════════════════════════════
-	// 4. Website badge (top-right — Figma: 753, 70)
-	// ═══════════════════════════════════════════════════════════
+	// Website pill (right side)
 	{
-		const badgeFont = preset('dm-sans', 20)
-		const { width: tw } = TextRenderer.measure(ctx, website, badgeFont)
-		const iconSz = 22
-		const padX = 24, padY = 16, gap = 11
-		const bw = padX + iconSz + gap + tw + padX
-		const bh = padY * 2 + 22
-		const bx = 753, by = 70
+		const pillH = 54
+		const pillR = 12
+		const pillPadX = 24
+		const pillFont = fontString('dm-sans', 20, 400)
+		const globeSize = 22
+		const globeGap = 11
 
-		// White bg + border
+		const { width: webTW } = TextRenderer.measure(ctx, website, pillFont)
+		const pillContentW = globeSize + globeGap + webTW
+		const pillW = pillContentW + pillPadX * 2
+		const pillX = W - 52 - pillW
+		const pillY = 60
+
+		// Semi-transparent white bg + border
 		ctx.save()
-		Effects.roundedRectPath(ctx, bx, by, bw, bh, 12)
-		ctx.fillStyle = '#ffffff'
+		Effects.roundedRectPath(ctx, pillX, pillY, pillW, pillH, pillR)
+		ctx.fillStyle = 'rgba(255,255,255,0.8)'
 		ctx.fill()
 		ctx.strokeStyle = '#dedede'
-		ctx.lineWidth = 2
+		ctx.lineWidth = 1
 		ctx.stroke()
 		ctx.restore()
 
-		// Globe icon (circle + crosshairs)
-		const gx = bx + padX + iconSz / 2
-		const gy = by + bh / 2
-		const gr = iconSz / 2
-		ctx.save()
-		ctx.strokeStyle = '#444'
-		ctx.lineWidth = 2.5
-		ctx.beginPath()
-		ctx.arc(gx, gy, gr, 0, Math.PI * 2)
-		ctx.stroke()
-		ctx.beginPath()
-		ctx.moveTo(gx - gr, gy)
-		ctx.lineTo(gx + gr, gy)
-		ctx.stroke()
-		ctx.beginPath()
-		ctx.moveTo(gx, gy - gr)
-		ctx.lineTo(gx, gy + gr)
-		ctx.stroke()
-		ctx.restore()
+		// Globe icon
+		const globeCX = pillX + pillPadX + globeSize / 2
+		const globeCY = pillY + pillH / 2
+		drawGlobeIcon(ctx, globeCX, globeCY, globeSize)
 
-		// URL text
-		TextRenderer.draw(ctx, bx + padX + iconSz + gap, by + padY, website, {
-			font: badgeFont, color: '#000000', align: 'left', baseline: 'top',
+		// Website text
+		const textStartX = globeCX + globeSize / 2 + globeGap
+		TextRenderer.draw(ctx, textStartX, pillY + pillH / 2, website, {
+			font: pillFont,
+			color: '#000000',
+			align: 'left',
+			baseline: 'middle',
 		})
 	}
 
 	// ═══════════════════════════════════════════════════════════
-	// 5. Headline tags — "Explore.", "Thrilling.", "Activities."
-	//    Positioned mid-left to align with cards vertically
+	// 4. Headline tags — "Explore.", "Thrilling.", "Activities."
 	// ═══════════════════════════════════════════════════════════
 	const headX = 52
 	let curY = 400
@@ -375,13 +426,11 @@ export async function renderExploreActivities(
 	for (const word of headlineWords) {
 		const { width: tw, height: th } = TextRenderer.measure(ctx, word, hlFont)
 
-		// Dark background band
 		ctx.save()
 		ctx.fillStyle = headlineBgColor
 		ctx.fillRect(headX, curY, tw + hlPad * 2, th + hlPad * 2)
 		ctx.restore()
 
-		// White text on dark band
 		TextRenderer.draw(ctx, headX + hlPad, curY + hlPad, word, {
 			font: hlFont, color: '#edeeef', align: 'left', baseline: 'top',
 		})
@@ -390,58 +439,104 @@ export async function renderExploreActivities(
 	}
 
 	// ═══════════════════════════════════════════════════════════
-	// 6. Stats section (below headlines, 64px gap)
-	// ═══════════════════════════════════════════════════════════
-	curY += 64 - hlGap  // adjust: hlGap was added after last headline
-	const sX = headX + 24  // stats left padding
-	const iconR = 16       // 32px icon diameter
-	const sBoldFont = preset('dm-sans-bold', 18)
-	const sNormFont = preset('dm-sans', 18)
-	const sRowGap = 20
-
-	for (let i = 0; i < stats.length; i++) {
-		const s = stats[i]
-
-		// Icon
-		const iconCX = sX + iconR
-		const iconCY = curY + iconR
-		ICON_DRAWERS[s.iconType]?.(ctx, iconCX, iconCY, iconR)
-
-		// Bold + normal text
-		const textX = sX + iconR * 2 + 10
-		const textY = curY + 8
-		TextRenderer.draw(ctx, textX, textY, s.boldText, {
-			font: sBoldFont, color: '#000000', align: 'left', baseline: 'top',
-		})
-		const { width: boldW } = TextRenderer.measure(ctx, s.boldText, sBoldFont)
-		TextRenderer.draw(ctx, textX + boldW, textY, s.normalText, {
-			font: sNormFont, color: '#000000', align: 'left', baseline: 'top',
-		})
-
-		curY += iconR * 2 + sRowGap
-
-		// Vertical divider between stats
-		if (i < stats.length - 1) {
-			ctx.save()
-			ctx.fillStyle = '#b5b5b5'
-			ctx.fillRect(sX, curY, 2, 48)
-			ctx.restore()
-			curY += 48 + sRowGap
-		}
-	}
-
-	// ═══════════════════════════════════════════════════════════
-	// 7. Photo cards (3 cards, drawn in order for correct stacking)
+	// 5. Photo cards (3 cards)
 	// ═══════════════════════════════════════════════════════════
 	for (let i = 0; i < CARDS.length; i++) {
 		await drawCard(ctx, CARDS[i], config.photos?.[i])
 	}
 
 	// ═══════════════════════════════════════════════════════════
-	// 8. Bird silhouettes (real PNG)
+	// 6. Bird silhouettes (birds.png asset)
+	//    HTML: left:-5 top:941 rotate(-13.54deg)
+	//          left:849 top:1099 rotate(8.8deg)
 	// ═══════════════════════════════════════════════════════════
-	await drawPNG(ctx, BIRDS_PNG, 180, 50, 300, 90, 0.75)       // top flock
-	await drawPNG(ctx, BIRDS_PNG, 20, H - 140, 200, 60, 0.50)   // bottom-left flock
+	await drawPNG(ctx, BIRDS_PNG,
+		-5 + 235.695 / 2 - 213.537 / 2, 941 + 166.654 / 2 - 120 / 2,
+		213.537, 120, 0.70)
+
+	await drawPNG(ctx, BIRDS_PNG,
+		849 + 185.799 / 2 - 162.631 / 2, 1099 + 186.942 / 2 - 164 / 2,
+		162.631, 164, 0.55)
+
+	// ═══════════════════════════════════════════════════════════
+	// 7. Stats footer bar
+	//    HTML: top:1212, w:1080, shadow: 2px 2px 4px rgba(0,0,0,0.12)
+	//    divider → 24px gap → stats row → 24px gap → divider
+	// ═══════════════════════════════════════════════════════════
+	{
+		const statsTop = 1212
+		const padX = 24
+
+		// Top divider
+		ctx.fillStyle = '#e6e6e6'
+		ctx.fillRect(0, statsTop, W, 1)
+
+		// Stats row area (between dividers, with 24px gap each side)
+		const rowY = statsTop + 1 + 24
+		const rowH = 48  // icon/text height
+		const bottomDivY = rowY + rowH + 24
+
+		// White background with shadow behind stats area
+		ctx.save()
+		ctx.shadowColor = 'rgba(0,0,0,0.12)'
+		ctx.shadowBlur = 4
+		ctx.shadowOffsetX = 2
+		ctx.shadowOffsetY = 2
+		ctx.fillStyle = '#ffffff'
+		ctx.fillRect(0, statsTop + 1, W, bottomDivY - statsTop)
+		ctx.restore()
+
+		// Bottom divider
+		ctx.fillStyle = '#e6e6e6'
+		ctx.fillRect(0, bottomDivY, W, 1)
+
+		const iconTypes: Array<'star' | 'shield' | 'gift'> = ['star', 'shield', 'gift']
+		const n = Math.min(stats.length, 3)
+		const availW = W - padX * 2
+		const sectionW = availW / n
+		const centerY = rowY + rowH / 2
+
+		const statFont = fontString('dm-sans', 18, 400)
+		const statBoldFont = fontString('dm-sans-bold', 18, 700)
+
+		for (let i = 0; i < n; i++) {
+			const s = stats[i]
+			const sectionX = padX + i * sectionW
+
+			// Icon
+			const iconX = sectionX + 16
+			drawStatIcon(ctx, iconX, centerY, iconTypes[i] || 'star')
+
+			// Text (bold part + normal part)
+			const textX = iconX + 26
+			ctx.save()
+
+			const boldMetrics = TextRenderer.measure(ctx, s.boldText, statBoldFont)
+
+			TextRenderer.draw(ctx, textX, centerY, s.boldText, {
+				font: statBoldFont,
+				color: '#000000',
+				align: 'left',
+				baseline: 'middle',
+			})
+
+			TextRenderer.draw(ctx, textX + boldMetrics.width, centerY, s.normalText, {
+				font: statFont,
+				color: '#000000',
+				align: 'left',
+				baseline: 'middle',
+			})
+
+			ctx.restore()
+
+			// Separator (except after last item)
+			if (i < n - 1) {
+				const sepX = sectionX + sectionW
+				ctx.fillStyle = '#eaeaea'
+				ctx.fillRect(sepX, centerY - 24, 1, 48)
+			}
+		}
+	}
 
 	// ── Export ─────────────────────────────────────────────────
 	return canvas.encode('png')

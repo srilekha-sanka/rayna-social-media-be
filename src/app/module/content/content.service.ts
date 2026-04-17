@@ -808,6 +808,14 @@ Note: Using AI-generated imagery.`)
 				return result
 			}
 
+			// ── travel-destinations: cover + slides carousel ──
+			if (template.slug === 'travel-destinations') {
+				const result = await this.renderTravelDestinationsCarousel(
+					localPaths, logoLocalPath, templateAspect, data, entry, products,
+				)
+				return result
+			}
+
 			// ── Default: single-image canvas templates ──
 			switch (template.slug) {
 				default:
@@ -1108,7 +1116,7 @@ Note: Using AI-generated imagery.`)
 	/**
 	 * Renders a summer-holiday carousel.
 	 * Slide 1 = cover (hero background + 4 polaroid cards + wave + headline).
-	 * Slides 2+ = one summer-holiday-slide per remaining product image.
+	 * Slides 2+ = 2×2 activity grid slides (up to 4 products per slide).
 	 */
 	private async renderSummerHolidayCarousel(
 		localPaths: string[],
@@ -1125,16 +1133,19 @@ Note: Using AI-generated imagery.`)
 		logger.info(`[summer-holiday] localPaths=${localPaths.length}, products=${products?.length || 0}`)
 
 		// ── Slide 1: Summer Holiday cover ──
-		// First image → heroPhoto (background), up to 4 images → polaroid cards
+		// Use first image as hero background, remaining images as polaroid cards
 		const heroPhoto = localPaths[0]
-		const polaroidPhotos = localPaths.slice(0, 4)
+		const polaroidPhotos = localPaths.length > 1
+			? localPaths.slice(1, 5)
+			: localPaths.slice(0, 4)
 
 		const coverConfig: Record<string, unknown> = {
 			heroPhoto,
 			photos: polaroidPhotos,
 			headlineText: data.headline || 'Summer Holiday Packages',
-			ctaText: 'Book now',
 			headlineColor: '#0e3872',
+			logoPath: logoLocalPath,
+			website: 'www.raynatours.com',
 		}
 
 		logger.info(`[canvas-template] Rendering summer-holiday cover heroPhoto=${!!heroPhoto} polaroids=${polaroidPhotos.length}`)
@@ -1146,22 +1157,29 @@ Note: Using AI-generated imagery.`)
 		})
 		urls.push(await this.uploadCanvasBuffer(coverBuffer))
 
-		// ── Slides 2+: one summer-holiday-slide per product ──
+		// ── Slides 2+: 2×2 grid slides (batch 4 products per slide) ──
 		if (hasMultipleProducts) {
-			for (let i = 0; i < products.length; i++) {
-				const product = products[i]
+			// Group products into batches of 4 for the 2×2 grid
+			for (let batch = 0; batch < products.length; batch += 4) {
+				const batchProducts = products.slice(batch, batch + 4)
+				const batchPhotos = batchProducts.map((_, i) => localPaths[(batch + i) % localPaths.length])
+				const batchLabels = batchProducts.map((p) => p.name || '')
+
+				// Use the category of the first product in the batch as the title
+				const batchTitle = batchProducts[0]?.category || batchProducts[0]?.product_type || 'Activities'
+				const batchSubtitle = data.subheadline || `Explore the Best ${batchTitle}`
+
 				const slideConfig: Record<string, unknown> = {
 					logoPath: logoLocalPath,
 					website: 'www.raynatours.com',
-					phone: '011-348885',
-					title: product.category || product.product_type || 'Activities',
-					subtitle: product.offer_label || `From ${product.currency} ${product.price}`,
-					photo: localPaths[i % localPaths.length],
-					photoLabel: product.name || '',
+					title: batchTitle,
+					subtitle: batchSubtitle,
+					photos: batchPhotos,
+					labels: batchLabels,
 					titleColor: '#596d89',
 				}
 
-				logger.info(`[canvas-template] Rendering summer-holiday-slide ${i + 2} for "${product.name}"`)
+				logger.info(`[canvas-template] Rendering summer-holiday-slide ${Math.floor(batch / 4) + 2} with ${batchProducts.length} products`)
 				const slideBuffer = await canvasTemplateRenderer.render({
 					template: 'summer-holiday-slide',
 					config: slideConfig,
@@ -1171,31 +1189,29 @@ Note: Using AI-generated imagery.`)
 				urls.push(await this.uploadCanvasBuffer(slideBuffer))
 			}
 		} else {
-			// Single-product fallback: one slide per remaining image
+			// Single-product fallback: one slide with available images
 			const title = data.headline || 'Activities'
-			const subtitle = data.subheadline || data.tagline || ''
+			const subtitle = data.subheadline || data.tagline || `Explore the Best ${title}`
 
-			for (let i = 1; i < localPaths.length; i++) {
-				const slideConfig: Record<string, unknown> = {
-					logoPath: logoLocalPath,
-					website: 'www.raynatours.com',
-					phone: '011-348885',
-					title,
-					subtitle,
-					photo: localPaths[i],
-					photoLabel: '',
-					titleColor: '#596d89',
-				}
-
-				logger.info(`[canvas-template] Rendering summer-holiday-slide ${i + 1}`)
-				const slideBuffer = await canvasTemplateRenderer.render({
-					template: 'summer-holiday-slide',
-					config: slideConfig,
-					format: 'PNG',
-					aspect_ratio: resolvedAspect,
-				})
-				urls.push(await this.uploadCanvasBuffer(slideBuffer))
+			const slidePhotos = localPaths.slice(0, 4)
+			const slideConfig: Record<string, unknown> = {
+				logoPath: logoLocalPath,
+				website: 'www.raynatours.com',
+				title,
+				subtitle,
+				photos: slidePhotos,
+				labels: [],
+				titleColor: '#596d89',
 			}
+
+			logger.info(`[canvas-template] Rendering summer-holiday-slide 2 with ${slidePhotos.length} images`)
+			const slideBuffer = await canvasTemplateRenderer.render({
+				template: 'summer-holiday-slide',
+				config: slideConfig,
+				format: 'PNG',
+				aspect_ratio: resolvedAspect,
+			})
+			urls.push(await this.uploadCanvasBuffer(slideBuffer))
 		}
 
 		return urls
@@ -1221,9 +1237,11 @@ Note: Using AI-generated imagery.`)
 		logger.info(`[itineraries] localPaths=${localPaths.length}, products=${products?.length || 0}`)
 
 		// ── Slide 1: Itineraries cover ──
-		// First image → bgPhoto (skyline hero), up to 4 images → polaroid cards
+		// Use first image as hero background, remaining images as polaroid cards
 		const bgPhoto = localPaths[0]
-		const polaroidPhotos = localPaths.slice(0, 4)
+		const polaroidPhotos = localPaths.length > 1
+			? localPaths.slice(1, 5)
+			: localPaths.slice(0, 4)
 
 		const coverConfig: Record<string, unknown> = {
 			bgPhoto,
@@ -1247,7 +1265,6 @@ Note: Using AI-generated imagery.`)
 		if (hasMultipleProducts) {
 			for (let i = 0; i < products.length; i++) {
 				const product = products[i]
-				// For split photo: use current image + next image (wrapping)
 				const leftPhoto = localPaths[i % localPaths.length]
 				const rightPhoto = localPaths[(i + 1) % localPaths.length]
 
@@ -1270,15 +1287,16 @@ Note: Using AI-generated imagery.`)
 				urls.push(await this.uploadCanvasBuffer(slideBuffer))
 			}
 		} else {
-			// Single-product fallback: one slide per remaining image
+			// Single-product fallback: generate slides from available images
 			const subtitle = data.subheadline || data.headline || ''
+			const slideCount = Math.max(localPaths.length, 1)
 
-			for (let i = 1; i < localPaths.length; i++) {
-				const leftPhoto = localPaths[i]
+			for (let i = 0; i < slideCount; i++) {
+				const leftPhoto = localPaths[i % localPaths.length]
 				const rightPhoto = localPaths[(i + 1) % localPaths.length]
 
 				const slideConfig: Record<string, unknown> = {
-					dayNumber: i,
+					dayNumber: i + 1,
 					subtitle,
 					photos: [leftPhoto, rightPhoto],
 					logoPath: logoLocalPath,
@@ -1286,9 +1304,116 @@ Note: Using AI-generated imagery.`)
 					titleColor: '#596d89',
 				}
 
-				logger.info(`[canvas-template] Rendering itineraries-slide ${i + 1} (Day ${i})`)
+				logger.info(`[canvas-template] Rendering itineraries-slide ${i + 2} (Day ${i + 1})`)
 				const slideBuffer = await canvasTemplateRenderer.render({
 					template: 'itineraries-slide',
+					config: slideConfig,
+					format: 'PNG',
+					aspect_ratio: resolvedAspect,
+				})
+				urls.push(await this.uploadCanvasBuffer(slideBuffer))
+			}
+		}
+
+		return urls
+	}
+
+	/**
+	 * Renders a travel-destinations carousel.
+	 * Slide 1 = cover (gradient hero + 3 tall photo cards + stats + tagline).
+	 * Slides 2+ = one itineraries-slide per product (reuses the day-slide layout).
+	 */
+	private async renderTravelDestinationsCarousel(
+		localPaths: string[],
+		logoLocalPath: string | undefined,
+		templateAspect: string,
+		data: Record<string, string>,
+		entry?: CalendarEntry,
+		products?: Product[],
+	): Promise<string[]> {
+		const urls: string[] = []
+		const hasMultipleProducts = products && products.length > 1
+		const resolvedAspect = (templateAspect === 'auto' ? '4:5' : templateAspect) as any
+
+		logger.info(`[travel-destinations] localPaths=${localPaths.length}, products=${products?.length || 0}`)
+
+		// ── Slide 1: Travel Destinations cover ──
+		// Up to 3 images for the tall cards
+		const coverPhotos = localPaths.slice(0, 3)
+		const cardLabels: Array<{ title: string; subtitle: string }> = []
+
+		if (hasMultipleProducts) {
+			for (let i = 0; i < Math.min(3, products.length); i++) {
+				const p = products[i]
+				cardLabels.push({
+					title: p.name || p.city || `Destination ${i + 1}`,
+					subtitle: p.duration || '',
+				})
+			}
+		}
+
+		const coverConfig: Record<string, unknown> = {
+			photos: coverPhotos,
+			cardLabels,
+			taglineText: data.headline || 'Travel. Relax. Repeat.',
+			offerText: data.subheadline || 'Book at 15% off',
+			logoPath: logoLocalPath,
+			website: 'www.raynatours.com',
+		}
+
+		logger.info(`[canvas-template] Rendering travel-destinations cover photos=${coverPhotos.length}`)
+		const coverBuffer = await canvasTemplateRenderer.render({
+			template: 'travel-destinations',
+			config: coverConfig,
+			format: 'PNG',
+			aspect_ratio: resolvedAspect,
+		})
+		urls.push(await this.uploadCanvasBuffer(coverBuffer))
+
+		// ── Slides 2+: one travel-destinations-slide per product ──
+		if (hasMultipleProducts) {
+			for (let i = 0; i < products.length; i++) {
+				const product = products[i]
+
+				// Build sub-labels from product metadata
+				const subLabels: string[] = []
+				if (product.category) subLabels.push(product.category)
+				if (product.city) subLabels.push(product.city)
+				if (product.country && product.country !== product.city) subLabels.push(product.country)
+
+				const slideConfig: Record<string, unknown> = {
+					photo: localPaths[i % localPaths.length],
+					title: product.name || '',
+					subLabels: subLabels.length > 0 ? subLabels : undefined,
+					logoPath: logoLocalPath,
+					website: 'www.raynatours.com',
+				}
+
+				logger.info(`[canvas-template] Rendering travel-destinations-slide ${i + 2} for "${product.name}"`)
+				const slideBuffer = await canvasTemplateRenderer.render({
+					template: 'travel-destinations-slide',
+					config: slideConfig,
+					format: 'PNG',
+					aspect_ratio: resolvedAspect,
+				})
+				urls.push(await this.uploadCanvasBuffer(slideBuffer))
+			}
+		} else {
+			// Single-product fallback
+			const title = data.headline || data.destination || 'Destination'
+			const slideCount = Math.max(localPaths.length, 1)
+
+			for (let i = 0; i < slideCount; i++) {
+				const slideConfig: Record<string, unknown> = {
+					photo: localPaths[i % localPaths.length],
+					title,
+					logoPath: logoLocalPath,
+					website: 'www.raynatours.com',
+				}
+
+				logger.info(`[canvas-template] Rendering travel-destinations-slide ${i + 2}`)
+				const slideBuffer = await canvasTemplateRenderer.render({
+					template: 'travel-destinations-slide',
 					config: slideConfig,
 					format: 'PNG',
 					aspect_ratio: resolvedAspect,

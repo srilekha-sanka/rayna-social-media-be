@@ -610,30 +610,16 @@ Generate a bold, clean, premium Instagram travel poster with:
 		name: 'Summer Holiday',
 		slug: 'summer-holiday',
 		renderer: 'canvas' as const,
-		description: 'Carousel cover: white background with hero photo, four scattered polaroid-style cards, dark-blue wave decoration, "Summer Holiday Packages" headline, and "Book now" button.',
+		description: 'Carousel cover: hero photo fading to white, four scattered polaroid photo cards, stats bar with rated/experiences/customers icons, "Summer Holiday Packages" headline, schedule sub-row, and branded bottom bar with logo + website pill.',
 		media_type: 'image' as const,
 		prompt_config: {
-			design_prompt: 'Canvas/Skia template: white background with hero image at top, four rotated polaroid photo cards with dashed borders, dark-blue wave blob (Vector 1), Fuzzy Bubbles "Summer Holiday Packages" headline, and white "Book now" pill button.',
-			dynamic_fields: ['heroPhoto', 'photos', 'headlineText', 'ctaText'],
+			design_prompt: 'Canvas/Skia template: hero photo at top fading to white via gradient, four scattered polaroid-style photo cards with dashed borders and rotations, stats bar with star/badge/people icons and metrics, large centered headline "Summer Holiday Packages", sub-row with schedule details separated by dividers, bottom bar with brand logo and website pill.',
+			dynamic_fields: ['heroPhoto', 'photos', 'headlineText', 'stats', 'subTexts', 'logoPath', 'website'],
 		},
 		sort_order: 10,
 	},
 
-	// ─── 11. Summer Holiday Slide (Canvas) ─────────────────────
-	{
-		name: 'Summer Holiday Slide',
-		slug: 'summer-holiday-slide',
-		renderer: 'canvas' as const,
-		description: 'Carousel item slide: white background with logo + badge header, Fuzzy Bubbles title & subtitle, large centered photo card with gradient overlay and label, bird silhouette decorations.',
-		media_type: 'image' as const,
-		prompt_config: {
-			design_prompt: 'Canvas/Skia template: white background, Rayna Tours logo with phone and website badges, Fuzzy Bubbles category title (Activities/Cruises) with offer subtitle, large centered photo card with bottom gradient overlay and label text, bird silhouettes.',
-			dynamic_fields: ['title', 'subtitle', 'photo', 'photoLabel', 'website', 'phone'],
-		},
-		sort_order: 11,
-	},
-
-	// ─── 12. Itineraries (Canvas) ────────────────────────────
+	// ─── 11. Itineraries (Canvas) ────────────────────────────
 	{
 		name: 'Itineraries',
 		slug: 'itineraries',
@@ -643,6 +629,20 @@ Generate a bold, clean, premium Instagram travel poster with:
 		prompt_config: {
 			design_prompt: 'Canvas/Skia template: Dubai skyline hero photo at top fading to white via gradient, four scattered polaroid-style photo cards with dashed borders and rotations, stats bar with star/badge/people icons and metrics, large centered headline "Your holiday to Dubai got easier", sub-row with schedule details separated by dividers, bottom bar with brand logo and website pill.',
 			dynamic_fields: ['bgPhoto', 'photos', 'headlineText', 'stats', 'subTexts', 'logoPath', 'website'],
+		},
+		sort_order: 11,
+	},
+
+	// ─── 12. Travel Destinations (Canvas) ────────────────────
+	{
+		name: 'Travel Destinations',
+		slug: 'travel-destinations',
+		renderer: 'canvas' as const,
+		description: 'Gradient hero with three tall vertical destination photo cards, stats bar, dark tagline box, offer text, decorative clouds and bird silhouettes.',
+		media_type: 'image' as const,
+		prompt_config: {
+			design_prompt: 'Canvas/Skia template: blue-white gradient hero, three tall vertical photo cards (270×710) with destination labels, stats bar with star/badge/people icons, dark tagline box "Travel. Relax. Repeat.", offer text, decorative clouds and bird silhouettes.',
+			dynamic_fields: ['photos', 'cardLabels', 'taglineText', 'offerText', 'logoPath', 'website'],
 		},
 		sort_order: 12,
 	},]

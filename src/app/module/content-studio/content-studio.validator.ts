@@ -124,7 +124,6 @@ export const composeEntrySchema = Joi.object({
 	content_source: Joi.string().valid('PRODUCT', 'STOCK', 'AI_GENERATED').default('PRODUCT'),
 	base_content: Joi.string().optional().allow('').trim(),
 	hashtags: Joi.array().items(Joi.string()).optional(),
-	cta_text: Joi.string().optional().allow('').trim(),
 	media_urls: Joi.array().items(Joi.string()).optional(),
 	// STOCK source fields
 	stock_image_urls: Joi.array().items(Joi.string().uri()).when('content_source', {
