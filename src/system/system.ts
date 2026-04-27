@@ -13,6 +13,7 @@ import { errorHandler } from '../app/middlewares/commonErrorHandler'
 import routes from '../app/routes'
 import { seedProductsFromFeed } from '../app/module/product/product-sync.service'
 import { seedDesignTemplates } from '../db/seeds/design-template.seed'
+import { seedAdminUser } from '../db/seeds/admin-user.seed'
 
 let routingUrl = '/api/v1'
 
@@ -59,6 +60,7 @@ export class System {
 					logger.info('📁[DB]: Database is connected and synced.')
 					await seedProductsFromFeed()
 					await seedDesignTemplates()
+					await seedAdminUser()
 					const port: number = process.env.PORT ? +process.env.PORT : 3000
 					app.listen(port, async () => {
 						logger.info('----------------------------------------------------------')
