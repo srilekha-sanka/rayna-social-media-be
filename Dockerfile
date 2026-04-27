@@ -9,6 +9,8 @@ RUN npm ci
 COPY tsconfig.json ./
 COPY src/ ./src/
 
+# Install missing type declarations for build
+RUN npm i --save-dev @types/node-fetch @types/pg
 RUN npm run build
 
 # ── Production stage ─────────────────────────────────────
