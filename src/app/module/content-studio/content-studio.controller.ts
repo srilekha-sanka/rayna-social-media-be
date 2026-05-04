@@ -8,6 +8,7 @@ import {
 	createEntrySchema,
 	updateEntrySchema,
 	composeEntrySchema,
+	composeAllSchema,
 	calendarQuerySchema,
 } from './content-studio.validator'
 import ResponseService from '../../utils/response.service'
@@ -155,6 +156,26 @@ class ContentStudioController extends ResponseService {
 		}
 	}
 
+	approveAllEntries = async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			const entry_ids = Array.isArray(req.body?.entry_ids) ? req.body.entry_ids : undefined
+			const { statusCode, payload, message } = await contentStudioService.approveAllEntries(req.params.id, { entry_ids })
+			return this.sendResponse(res, statusCode, payload, message)
+		} catch (err) {
+			next(err)
+		}
+	}
+
+	submitAllEntriesForReview = async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			const entry_ids = Array.isArray(req.body?.entry_ids) ? req.body.entry_ids : undefined
+			const { statusCode, payload, message } = await contentStudioService.submitAllEntriesForReview(req.params.id, { entry_ids })
+			return this.sendResponse(res, statusCode, payload, message)
+		} catch (err) {
+			next(err)
+		}
+	}
+
 	rejectPlan = async (req: Request, res: Response, next: NextFunction) => {
 		try {
 			const { statusCode, payload, message } = await contentStudioService.rejectPlan(req.params.id)
@@ -233,6 +254,17 @@ class ContentStudioController extends ResponseService {
 			const { error, value } = composeEntrySchema.validate(req.body, { abortEarly: false, stripUnknown: true })
 			if (error) throw new BadRequestError(error.details.map((d) => d.message).join(', '))
 			const { statusCode, payload, message } = await contentStudioService.composeEntry(req.params.id, req.user.userId, value)
+			return this.sendResponse(res, statusCode, payload, message)
+		} catch (err) {
+			next(err)
+		}
+	}
+
+	composeAllForPlan = async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			const { error, value } = composeAllSchema.validate(req.body, { abortEarly: false, stripUnknown: true })
+			if (error) throw new BadRequestError(error.details.map((d) => d.message).join(', '))
+			const { statusCode, payload, message } = await contentStudioService.composeAllForPlan(req.params.id, req.user.userId, value)
 			return this.sendResponse(res, statusCode, payload, message)
 		} catch (err) {
 			next(err)
