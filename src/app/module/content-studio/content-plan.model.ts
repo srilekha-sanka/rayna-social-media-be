@@ -9,6 +9,11 @@ export type ContentPlanStatus = 'DRAFT' | 'PENDING_REVIEW' | 'APPROVED' | 'ACTIV
 export const VALID_POST_TYPES = ['reel', 'image', 'carousel', 'cinematic_video', 'story', 'text'] as const
 export type PostType = (typeof VALID_POST_TYPES)[number]
 
+// Post types we currently support end-to-end (rendering, overlay, composition).
+// Other VALID_POST_TYPES values are accepted at the schema level for forward-compat,
+// but the content generator silently narrows to this subset.
+export const SUPPORTED_POST_TYPES: readonly PostType[] = ['image', 'carousel']
+
 interface ContentPlanAttributes extends BaseAttributes {
 	id: string
 	name: string

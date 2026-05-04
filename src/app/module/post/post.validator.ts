@@ -8,7 +8,7 @@ export const createPostSchema = Joi.object({
 	campaign_id: Joi.string().uuid().optional(),
 	base_content: Joi.string().optional().trim(),
 	hashtags: Joi.array().items(Joi.string()).optional().default([]),
-	cta_text: Joi.string().optional().trim(),
+	cta_text: Joi.any().strip(),
 	platforms: Joi.array().items(Joi.string().lowercase().valid(...VALID_PLATFORMS)).optional().default([]),
 	social_account_ids: Joi.array().items(Joi.string().uuid()).optional().default([]),
 	media_urls: Joi.array().items(Joi.string()).optional().default([]),
@@ -18,7 +18,7 @@ export const createPostSchema = Joi.object({
 export const updatePostSchema = Joi.object({
 	base_content: Joi.string().optional().trim(),
 	hashtags: Joi.array().items(Joi.string()).optional(),
-	cta_text: Joi.string().optional().trim(),
+	cta_text: Joi.any().strip(),
 	platforms: Joi.array().items(Joi.string().lowercase().valid(...VALID_PLATFORMS)).optional(),
 	social_account_ids: Joi.array().items(Joi.string().uuid()).optional(),
 	media_urls: Joi.array().items(Joi.string()).optional(),

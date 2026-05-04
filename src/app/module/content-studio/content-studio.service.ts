@@ -1,5 +1,5 @@
 import { Op, WhereOptions } from 'sequelize'
-import ContentPlan, { ContentPlanStatus, VALID_POST_TYPES } from './content-plan.model'
+import ContentPlan, { ContentPlanStatus, SUPPORTED_POST_TYPES, VALID_POST_TYPES } from './content-plan.model'
 import CalendarEntry, { EntryContentType } from './calendar-entry.model'
 import DesignTemplate from './design-template.model'
 import Product from '../product/product.model'
@@ -48,7 +48,6 @@ interface AIPlanEntry {
 interface AIPostContent {
 	caption: string
 	hashtags: string[]
-	cta_text: string
 }
 
 interface CalendarQuery {
@@ -80,6 +79,7 @@ class ContentStudioService {
 	// --- Async Plan Generation ---
 
 	async generatePlan(input: GeneratePlanInput, userId: string): Promise<IServiceResponse> {
+		input.post_types = this.narrowToSupportedPostTypes(input.post_types)
 		const products = await this.fetchProducts(input.product_ids, input.product_type)
 		if (!products.length) throw new BadRequestError('No products found. At least one product is required.')
 
@@ -119,6 +119,7 @@ class ContentStudioService {
 	}
 
 	async generateEntriesForPlan(planId: string, input: GenerateEntriesInput): Promise<IServiceResponse> {
+		input.post_types = this.narrowToSupportedPostTypes(input.post_types)
 		const plan = await ContentPlan.findByPk(planId)
 		if (!plan) throw new NotFoundError('Content plan not found')
 
@@ -174,7 +175,7 @@ class ContentStudioService {
 			num_images?: number
 			apply_overlay?: boolean
 			generate_ai_caption?: boolean
-			base_content?: string; hashtags?: string[]; cta_text?: string; media_urls?: string[]
+			base_content?: string; hashtags?: string[]; media_urls?: string[]
 		},
 	) {
 		let mediaUrls: string[] = data?.media_urls || []
@@ -195,7 +196,7 @@ class ContentStudioService {
 
 		// For explore-activities/destinations or mixed carousels, fetch all plan products
 		// and take exactly ONE image per product (the main/first image).
-		const isExploreCarousel = template.slug === 'explore-activities' || template.slug === 'explore-destinations' || template.slug === 'summer-holiday'
+		const isExploreCarousel = template.slug === 'explore-activities' || template.slug === 'explore-destinations' || template.slug === 'summer-holiday' || template.slug === 'itineraries' || template.slug === 'travel-destinations'
 		const needsMultiProductImages = (isMixedCarousel || isExploreCarousel) && contentSource === 'PRODUCT'
 
 		if (needsMultiProductImages) {
@@ -286,20 +287,18 @@ class ContentStudioService {
 		// Step 3: Generate AI caption
 		let aiCaption = data?.base_content || undefined
 		let aiHashtags = data?.hashtags || []
-		let aiCta = data?.cta_text || undefined
 
 		if (!aiCaption) {
-			const captionResult = await aiService.callOpenAIRaw<{ caption: string; hashtags: string[]; cta_text: string }>(`You are a social media copywriter for Rayna Tours, Dubai's top tours & activities company.
+			const captionResult = await aiService.callOpenAIRaw<{ caption: string; hashtags: string[] }>(`You are a social media copywriter for Rayna Tours, Dubai's top tours & activities company.
 
 RESPOND WITH VALID JSON ONLY:
-{"caption":"the full post caption","hashtags":["hashtag1","hashtag2"],"cta_text":"call to action"}
+{"caption":"the full post caption","hashtags":["hashtag1","hashtag2"]}
 
 RULES:
 - Platform: ${entry.platform}
 - Content type: ${entry.content_type}
 - Write an engaging, scroll-stopping caption
 - 10-15 relevant hashtags
-- Platform-appropriate CTA
 ${entry.product ? `- Product: ${entry.product.name}, Price: ${entry.product.currency} ${entry.product.price}` : ''}`, `Create post content for:
 Title: ${entry.title}
 Brief: ${entry.description || 'No specific brief'}
@@ -309,7 +308,6 @@ Note: Using AI-designed poster with "${template.name}" style.`)
 
 			aiCaption = captionResult.caption
 			if (!aiHashtags.length) aiHashtags = captionResult.hashtags
-			if (!aiCta) aiCta = captionResult.cta_text
 		}
 
 		// Step 4: Create or update post draft
@@ -327,7 +325,6 @@ Note: Using AI-designed poster with "${template.name}" style.`)
 				media_urls: mediaUrls,
 				base_content: aiCaption || existingPost.base_content,
 				hashtags: aiHashtags.length ? aiHashtags : existingPost.hashtags,
-				cta_text: aiCta || existingPost.cta_text,
 			})
 			post = existingPost
 		} else {
@@ -337,7 +334,6 @@ Note: Using AI-designed poster with "${template.name}" style.`)
 				author_id: userId,
 				base_content: aiCaption || null,
 				hashtags: aiHashtags,
-				cta_text: aiCta || null,
 				platforms: [entry.platform],
 				media_urls: mediaUrls,
 				status: 'DRAFT',
@@ -723,7 +719,7 @@ Note: Using AI-designed poster with "${template.name}" style.`)
 		userId: string,
 		data?: {
 			content_source?: 'PRODUCT' | 'STOCK' | 'AI_GENERATED'
-			base_content?: string; hashtags?: string[]; cta_text?: string; media_urls?: string[]
+			base_content?: string; hashtags?: string[]; media_urls?: string[]
 			stock_image_urls?: string[]
 			apply_overlay?: boolean; generate_ai_caption?: boolean
 			ai_image_style?: 'photo' | 'digital-art' | '3d' | 'painting'
@@ -752,7 +748,6 @@ Note: Using AI-designed poster with "${template.name}" style.`)
 		let mediaUrls: string[] = data?.media_urls || []
 		let aiCaption = data?.base_content || undefined
 		let aiHashtags = data?.hashtags || []
-		let aiCta = data?.cta_text || undefined
 
 		// Load design template upfront (applies to ANY source)
 		let template: DesignTemplate | undefined
@@ -809,7 +804,6 @@ Note: Using AI-designed poster with "${template.name}" style.`)
 					mediaUrls = result.media_urls
 					if (!aiCaption) aiCaption = result.ai_content.caption
 					if (!aiHashtags.length) aiHashtags = result.ai_content.hashtags
-					if (!aiCta) aiCta = result.ai_content.cta
 				}
 			}
 
@@ -850,7 +844,6 @@ Note: Using AI-designed poster with "${template.name}" style.`)
 					mediaUrls = result.media_urls
 					if (!aiCaption) aiCaption = result.ai_content.caption
 					if (!aiHashtags.length) aiHashtags = result.ai_content.hashtags
-					if (!aiCta) aiCta = result.ai_content.cta
 				}
 			}
 		}
@@ -870,7 +863,6 @@ Note: Using AI-designed poster with "${template.name}" style.`)
 			mediaUrls = result.media_urls
 			if (result.ai_content && !aiCaption) aiCaption = result.ai_content.caption
 			if (result.ai_content && !aiHashtags.length) aiHashtags = result.ai_content.hashtags
-			if (result.ai_content && !aiCta) aiCta = result.ai_content.cta
 		}
 
 		// ── AI_GENERATED source (no template) ──
@@ -891,7 +883,6 @@ Note: Using AI-designed poster with "${template.name}" style.`)
 			mediaUrls = result.media_urls
 			if (!aiCaption) aiCaption = result.ai_content.caption
 			if (!aiHashtags.length) aiHashtags = result.ai_content.hashtags
-			if (!aiCta) aiCta = result.ai_content.cta
 		}
 
 		// ── Create or update post draft ──
@@ -908,7 +899,6 @@ Note: Using AI-designed poster with "${template.name}" style.`)
 			if (!existingPost.media_urls?.length && mediaUrls.length) updates.media_urls = mediaUrls
 			if (!existingPost.base_content && aiCaption) updates.base_content = aiCaption
 			if (!existingPost.hashtags?.length && aiHashtags.length) updates.hashtags = aiHashtags
-			if (!existingPost.cta_text && aiCta) updates.cta_text = aiCta
 
 			if (Object.keys(updates).length) {
 				await existingPost.update(updates)
@@ -927,7 +917,6 @@ Note: Using AI-designed poster with "${template.name}" style.`)
 			author_id: userId,
 			base_content: aiCaption || null,
 			hashtags: aiHashtags,
-			cta_text: aiCta || null,
 			platforms: [entry.platform],
 			media_urls: mediaUrls,
 			status: 'DRAFT',
@@ -1010,7 +999,6 @@ Note: Using AI-designed poster with "${template.name}" style.`)
 					status: post.status,
 					base_content: post.base_content,
 					hashtags: post.hashtags,
-					cta_text: post.cta_text,
 					platforms: post.platforms,
 					media_urls: post.media_urls,
 					scheduled_at: post.scheduled_at,
@@ -1438,14 +1426,16 @@ Note: Using AI-designed poster with "${template.name}" style.`)
 	private sanitizeAIEntries(entries: AIPlanEntry[], products?: Product[]): AIPlanEntry[] {
 		const validContentTypes: EntryContentType[] = ['PRODUCT_PROMO', 'FESTIVAL_GREETING', 'ENGAGEMENT', 'VALUE', 'BRAND_AWARENESS']
 		const validProductIds = new Set(products?.map((p) => p.id) || [])
+		const supportedPostTypes = new Set<string>(SUPPORTED_POST_TYPES)
 		let productIndex = 0
 		return entries.map((e) => {
 			const content_type = validContentTypes.includes(e.content_type) ? e.content_type : 'BRAND_AWARENESS'
+			const post_type = supportedPostTypes.has(e.post_type) ? e.post_type : 'image'
 
 			// Skip product_id assignment for MIXED_CAROUSEL entries — they intentionally have no single product
 			const isMixedCarousel = e.description?.includes('MIXED_CAROUSEL')
 			if (isMixedCarousel) {
-				return { ...e, content_type, product_id: undefined }
+				return { ...e, content_type, post_type, product_id: undefined }
 			}
 
 			const rawProductId = this.sanitizeProductId(e.product_id)
@@ -1458,8 +1448,14 @@ Note: Using AI-designed poster with "${template.name}" style.`)
 				productIndex++
 			}
 
-			return { ...e, content_type, product_id: productId }
+			return { ...e, content_type, post_type, product_id: productId }
 		})
+	}
+
+	private narrowToSupportedPostTypes(requested: string[] | undefined): string[] {
+		const supported = SUPPORTED_POST_TYPES as readonly string[]
+		const filtered = (requested || []).filter((t) => supported.includes(t))
+		return filtered.length ? filtered : [...SUPPORTED_POST_TYPES]
 	}
 
 	private matchCampaign(entry: AIPlanEntry, campaigns: Campaign[]): string | undefined {
@@ -1514,13 +1510,13 @@ Note: Using AI-designed poster with "${template.name}" style.`)
 
 		const totalDays = Math.ceil((new Date(input.end_date).getTime() - new Date(input.start_date).getTime()) / 86400000) + 1
 		const totalEntries = totalDays * input.platforms.length * input.posts_per_day
-		const isAllPostTypes = input.post_types.length === VALID_POST_TYPES.length
+		const isAllPostTypes = input.post_types.length === SUPPORTED_POST_TYPES.length
 
 		const hasMultipleProducts = products.length > 1
 		const includesCarousel = input.post_types.includes('carousel')
 
 		const postTypeRule = isAllPostTypes
-			? `- DAILY POST FORMAT ROTATION: Rotate post formats by day so each day has ONE dominant format across all platforms. Example: Day 1 = image, Day 2 = reel, Day 3 = carousel, Day 4 = story, Day 5 = cinematic_video, Day 6 = text, then repeat. All entries on the same day MUST use the same post_type. Available formats: ${VALID_POST_TYPES.join(', ')}.`
+			? `- DAILY POST FORMAT ROTATION: Rotate post formats by day so each day has ONE dominant format across all platforms. Example: Day 1 = image, Day 2 = carousel, then repeat. All entries on the same day MUST use the same post_type. Available formats: ${SUPPORTED_POST_TYPES.join(', ')}.`
 			: `- Allowed post formats: ${input.post_types.join(', ')}. ONLY use these formats. All entries on a given day should use the same post_type from this list, rotating daily.`
 
 		const mixedCarouselRule = hasMultipleProducts && includesCarousel
@@ -1551,7 +1547,7 @@ ${postTypeRule}
 ${input.product_type ? `- PRODUCT TYPE FOCUS: All products are "${input.product_type}". Tailor content strategy specifically for ${input.product_type} — use relevant vocabulary, visuals cues, and engagement tactics suited for ${input.product_type}. For carousel posts, plan to SHOWCASE MULTIPLE ${input.product_type} in a single post (mix of different products). Descriptions for carousels should mention featuring a variety of ${input.product_type}.` : ''}${mixedCarouselRule}`
 
 		const userPrompt = `Date range: ${input.start_date} to ${input.end_date} (${totalDays} days)
-Platforms: ${input.platforms.join(', ')} | Posts/day: ${input.posts_per_day} | Goal: ${input.primary_goal} | Language: ${input.language} | Format strategy: ${isAllPostTypes ? 'Rotate one format per day (image → reel → carousel → story → cinematic_video → text)' : input.post_types.join(', ')}
+Platforms: ${input.platforms.join(', ')} | Posts/day: ${input.posts_per_day} | Goal: ${input.primary_goal} | Language: ${input.language} | Format strategy: ${isAllPostTypes ? 'Rotate one format per day (image → carousel)' : input.post_types.join(', ')}
 ${input.product_type ? `Product type focus: ${input.product_type} — generate content themed around this category` : ''}
 ${input.special_notes ? `Notes: ${input.special_notes}` : ''}
 
@@ -1610,7 +1606,7 @@ Generate ${totalEntries} entries now.`
 		const systemPrompt = `You are a social media copywriter for Rayna Tours, Dubai's top tours & activities company.
 
 RESPOND WITH VALID JSON ONLY — no markdown, no explanation:
-{"caption":"the full post caption ready to publish","hashtags":["hashtag1","hashtag2",...],"cta_text":"call to action text"}
+{"caption":"the full post caption ready to publish","hashtags":["hashtag1","hashtag2",...]}
 
 RULES:
 - Write the caption in ${language}
@@ -1623,7 +1619,6 @@ RULES:
 - For FESTIVAL_GREETING: be warm, cultural, respectful
 - For BRAND_AWARENESS: tell the brand story, build trust
 - Hashtags: 10-15 relevant hashtags (mix of branded, niche, and trending)
-- CTA: platform-appropriate call to action (link in bio, book now, comment below, etc.)
 - Keep captions engaging, scroll-stopping, with emojis where appropriate`
 
 		const userPrompt = `Create post content for:

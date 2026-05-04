@@ -1,24 +1,21 @@
 /**
- * Template: Summer Holiday Packages
- * ==================================
- * White background with a hero photo at the top (faded to white),
+ * Template: Itineraries
+ * =====================
+ * White background with a Dubai skyline hero at the top (faded to white),
  * four scattered polaroid-style photo cards, a stats bar with icons,
- * headline "Summer Holiday Packages", sub-row with schedule info,
+ * headline "Your holiday to Dubai got easier", sub-row with schedule info,
  * and a bottom bar with logo + website pill.
  *
- * Same layout as the Itineraries cover template.
- *
- * Reference: Figma node 334:3805 — "Instagram post - 9" (1080×1350)
+ * Reference: Figma — "Instagram post - 88" (1080x1350)
  *
  * Config keys:
- *   heroPhoto      – Background hero image path
+ *   bgPhoto        – Background hero image path (skyline)
  *   photos         – [path1, path2, path3, path4] (four polaroid cards)
- *   headlineText   – Main headline (default: "Summer Holiday Packages")
+ *   headlineText   – Main headline (default: "Your holiday to Dubai got easier")
  *   headlineColor  – Headline color (default: '#0e3872')
  *   stats          – Array of { bold, text } for stats row
  *   subTexts       – Array of strings for the sub-row (default: ["Every Friday", "5 Nights & 6 Days"])
  *   subTextColor   – Sub text color (default: '#434343')
- *   ctaText        – (legacy, ignored)
  *   logoPath       – Path to brand logo image
  *   website        – Website URL text (default: "www.raynatours.com")
  */
@@ -36,20 +33,20 @@ import { Effects } from '../canvas-engine/effects'
 
 // ── Config ────────────────────────────────────────────────────
 
-export interface SummerHolidayConfig {
-	heroPhoto?: string              // background hero image
-	photos?: string[]               // 4 polaroid card photos
-	headlineText?: string           // "Summer Holiday Packages"
-	headlineColor?: string          // '#0e3872'
+export interface ItinerariesConfig {
+	bgPhoto?: string              // background hero image (skyline)
+	photos?: string[]             // 4 polaroid card photos
+	headlineText?: string         // "Your holiday to Dubai got easier"
+	headlineColor?: string        // '#0e3872'
 	stats?: Array<{ bold: string; text: string }>
-	subTexts?: string[]             // ["Every Friday", "5 Nights & 6 Days"]
-	subTextColor?: string           // '#434343'
-	ctaText?: string                // legacy — ignored
-	logoPath?: string               // brand logo image path
-	website?: string                // "www.raynatours.com"
+	subTexts?: string[]           // ["Every Friday", "5 Nights & 6 Days"]
+	subTextColor?: string         // '#434343'
+	logoPath?: string             // brand logo image path
+	website?: string              // "www.raynatours.com"
 }
 
 // ── Polaroid Card Definitions ─────────────────────────────────
+// Positions from the HTML: each card has left/top/rotation
 
 interface PolaroidCardDef {
 	cx: number
@@ -70,10 +67,16 @@ const POLAROID_W = POLAROID.photoW + POLAROID.padding * 2  // ~275.6
 const POLAROID_H = POLAROID.photoH + POLAROID.padding * 2  // ~318.6
 
 // Card positions (from HTML left/top, converted to center coords)
+// HTML cards include padding in the card-inner, so the outer wrapper
+// is at the specified left/top and the card-inner size is POLAROID_W x POLAROID_H
 const CARDS: PolaroidCardDef[] = [
+	// Card 1: left:-12, top:440, rotate:-9.11deg
 	{ cx: -12 + POLAROID_W / 2, cy: 440 + POLAROID_H / 2, rotation: -9.11 },
+	// Card 2: left:230, top:448, rotate:-2.71deg
 	{ cx: 230 + POLAROID_W / 2, cy: 448 + POLAROID_H / 2, rotation: -2.71 },
+	// Card 3: left:476, top:430, rotate:11.17deg
 	{ cx: 476 + POLAROID_W / 2, cy: 430 + POLAROID_H / 2, rotation: 11.17 },
+	// Card 4: left:748, top:432, rotate:4.89deg
 	{ cx: 748 + POLAROID_W / 2, cy: 432 + POLAROID_H / 2, rotation: 4.89 },
 ]
 
@@ -151,6 +154,7 @@ async function drawPolaroidCard(
 			ctx.drawImage(photo, -dw / 2, -dh / 2, dw, dh)
 			ctx.restore()
 		} catch {
+			// Fallback placeholder
 			ctx.save()
 			Effects.roundedRectPath(ctx, photoX, photoY, POLAROID.photoW, POLAROID.photoH, POLAROID.photoR)
 			ctx.fillStyle = '#d9d9d9'
@@ -158,6 +162,7 @@ async function drawPolaroidCard(
 			ctx.restore()
 		}
 	} else {
+		// Placeholder
 		ctx.save()
 		Effects.roundedRectPath(ctx, photoX, photoY, POLAROID.photoW, POLAROID.photoH, POLAROID.photoR)
 		ctx.fillStyle = '#d9d9d9'
@@ -175,10 +180,11 @@ function drawStatIcon(
 	cx: number, cy: number,
 	type: 'star' | 'badge' | 'people',
 ): void {
-	const r = 16
+	const r = 16  // 32px diameter / 2
 
 	ctx.save()
 
+	// Circle background
 	let bgColor: string
 	let iconColor: string
 	switch (type) {
@@ -196,23 +202,28 @@ function drawStatIcon(
 			break
 	}
 
+	// Draw circle
 	ctx.beginPath()
 	ctx.arc(cx, cy, r, 0, Math.PI * 2)
 	ctx.fillStyle = bgColor
 	ctx.fill()
 
+	// Draw icon symbol
 	ctx.fillStyle = iconColor
 	ctx.textAlign = 'center'
 	ctx.textBaseline = 'middle'
 
 	switch (type) {
 		case 'star':
+			// 5-point star
 			drawStar(ctx, cx, cy - 1, 8, 4, 5)
 			break
 		case 'badge':
+			// 5-point star (badge style)
 			drawStar(ctx, cx, cy - 2, 9, 4, 5)
 			break
 		case 'people':
+			// Person icon: head circle + body arc
 			ctx.beginPath()
 			ctx.arc(cx, cy - 5, 4, 0, Math.PI * 2)
 			ctx.fill()
@@ -255,19 +266,23 @@ function drawGlobeIcon(
 	ctx.strokeStyle = '#444444'
 	ctx.lineWidth = 1.4
 
+	// Outer circle
 	ctx.beginPath()
 	ctx.arc(cx, cy, r, 0, Math.PI * 2)
 	ctx.stroke()
 
+	// Vertical ellipse
 	ctx.beginPath()
 	ctx.ellipse(cx, cy, r * 0.38, r, 0, 0, Math.PI * 2)
 	ctx.stroke()
 
+	// Horizontal line
 	ctx.beginPath()
 	ctx.moveTo(cx - r, cy)
 	ctx.lineTo(cx + r, cy)
 	ctx.stroke()
 
+	// Vertical line
 	ctx.beginPath()
 	ctx.moveTo(cx, cy - r)
 	ctx.lineTo(cx, cy + r)
@@ -278,8 +293,8 @@ function drawGlobeIcon(
 
 // ── Render Function ───────────────────────────────────────────
 
-export async function renderSummerHoliday(
-	config: SummerHolidayConfig,
+export async function renderItineraries(
+	config: ItinerariesConfig,
 	dims: Dimensions = INSTAGRAM['4:5'],
 ): Promise<Buffer> {
 	const W = dims.width    // 1080
@@ -287,7 +302,7 @@ export async function renderSummerHoliday(
 	const { canvas, ctx } = createTemplateCanvas(dims)
 
 	// Defaults
-	const headlineText = config.headlineText || 'Summer Holiday Packages'
+	const headlineText = config.headlineText || 'Your holiday to Dubai got easier'
 	const headlineColor = config.headlineColor || '#0e3872'
 	const stats = config.stats || DEFAULT_STATS
 	const subTexts = config.subTexts || ['Every Friday', '5 Nights & 6 Days']
@@ -304,17 +319,19 @@ export async function renderSummerHoliday(
 	// 2. Background hero image (top portion)
 	//    HTML: left:0, top:-125, w:1080, h:820, opacity:0.9
 	// ═══════════════════════════════════════════════════════════
-	if (config.heroPhoto) {
+	if (config.bgPhoto) {
 		try {
-			const buf = fs.readFileSync(config.heroPhoto)
+			const buf = fs.readFileSync(config.bgPhoto)
 			const hero = await loadImage(buf)
 
 			ctx.save()
 			ctx.globalAlpha = 0.9
+			// Clip to visible area
 			ctx.beginPath()
-			ctx.rect(0, 0, W, 695)
+			ctx.rect(0, 0, W, 695)  // top:-125 + height:820 = 695 visible
 			ctx.clip()
 
+			// Cover-crop into 1080x820 area offset at top:-125
 			const imgRatio = hero.width / hero.height
 			const frameW = 1080, frameH = 820
 			const frameRatio = frameW / frameH
@@ -335,6 +352,7 @@ export async function renderSummerHoliday(
 
 	// ═══════════════════════════════════════════════════════════
 	// 3. Gradient fade: hero → white
+	//    HTML: top:440, height:460, gradient from transparent to white
 	// ═══════════════════════════════════════════════════════════
 	{
 		const gradY = 440
@@ -356,21 +374,26 @@ export async function renderSummerHoliday(
 
 	// ═══════════════════════════════════════════════════════════
 	// 5. Stats bar
+	//    HTML: top:876, height:74 (between two divider lines)
 	// ═══════════════════════════════════════════════════════════
 	{
 		const statsY = 876
 		const statsH = 74
 		const padX = 28
 
+		// Top divider
 		ctx.fillStyle = '#e0e0e0'
 		ctx.fillRect(0, statsY, W, 1)
 
+		// Background
 		ctx.fillStyle = '#ffffff'
 		ctx.fillRect(0, statsY + 1, W, statsH)
 
+		// Bottom divider
 		ctx.fillStyle = '#e0e0e0'
 		ctx.fillRect(0, statsY + 1 + statsH, W, 1)
 
+		// Stats items
 		const iconTypes: Array<'star' | 'badge' | 'people'> = ['star', 'badge', 'people']
 		const n = Math.min(stats.length, 3)
 		const availW = W - padX * 2
@@ -384,14 +407,18 @@ export async function renderSummerHoliday(
 			const stat = stats[i]
 			const sectionX = padX + i * sectionW
 
+			// Icon
 			const iconX = sectionX + 16
 			drawStatIcon(ctx, iconX, centerY, iconTypes[i] || 'star')
 
+			// Text (bold part + normal part)
 			const textX = iconX + 26
 			ctx.save()
 
+			// Measure bold part to position normal part after it
 			const boldMetrics = TextRenderer.measure(ctx, stat.bold, statBoldFont)
 
+			// Draw bold part
 			TextRenderer.draw(ctx, textX, centerY, stat.bold, {
 				font: statBoldFont,
 				color: '#111111',
@@ -399,6 +426,7 @@ export async function renderSummerHoliday(
 				baseline: 'middle',
 			})
 
+			// Draw normal part
 			TextRenderer.draw(ctx, textX + boldMetrics.width, centerY, stat.text, {
 				font: statFont,
 				color: '#111111',
@@ -408,6 +436,7 @@ export async function renderSummerHoliday(
 
 			ctx.restore()
 
+			// Separator (except after last item)
 			if (i < n - 1) {
 				const sepX = sectionX + sectionW
 				ctx.fillStyle = '#e0e0e0'
@@ -418,15 +447,18 @@ export async function renderSummerHoliday(
 
 	// ═══════════════════════════════════════════════════════════
 	// 6. Headline text
+	//    HTML: top:1050, font-size:64px, color:#0e3872, centered
 	// ═══════════════════════════════════════════════════════════
 	{
 		const hlFont = fontString('dm-sans', 64, 400)
 		const hlY = 1050
 
-		const maxW = W - 80
+		// Auto-fit if text is too wide
+		const maxW = W - 80  // 40px padding each side
 		const { width: textW } = TextRenderer.measure(ctx, headlineText, hlFont)
 		let finalFont = hlFont
 		if (textW > maxW) {
+			// Scale down to fit
 			const scale = maxW / textW
 			const newSize = Math.floor(64 * scale)
 			finalFont = fontString('dm-sans', newSize, 400)
@@ -442,6 +474,7 @@ export async function renderSummerHoliday(
 
 	// ═══════════════════════════════════════════════════════════
 	// 7. Sub-row (e.g. "Every Friday | 5 Nights & 6 Days")
+	//    HTML: top ~1132 (1050 + headline height + 18px gap)
 	// ═══════════════════════════════════════════════════════════
 	{
 		const subFont = fontString('dm-sans', 30, 400)
@@ -450,6 +483,7 @@ export async function renderSummerHoliday(
 		const sepH = 26
 		const gap = 24
 
+		// Calculate total width for centering
 		let totalW = 0
 		const widths: number[] = []
 		for (const text of subTexts) {
@@ -472,7 +506,8 @@ export async function renderSummerHoliday(
 
 			if (i < subTexts.length - 1) {
 				drawX += gap
-				const sepCenterY = subY + 15
+				// Separator line
+				const sepCenterY = subY + 15  // roughly center of text
 				ctx.fillStyle = '#b0b0b0'
 				ctx.fillRect(drawX, sepCenterY - sepH / 2, sepW, sepH)
 				drawX += sepW + gap
@@ -482,6 +517,7 @@ export async function renderSummerHoliday(
 
 	// ═══════════════════════════════════════════════════════════
 	// 8. Bottom bar: logo + website pill
+	//    HTML: left:40, top:1250, width:1000
 	// ═══════════════════════════════════════════════════════════
 	{
 		const barY = 1260
@@ -501,6 +537,7 @@ export async function renderSummerHoliday(
 				ctx.drawImage(logo, barLeft, barY + (54 - lh) / 2, lw, lh)
 			} catch { /* skip */ }
 		} else {
+			// Fallback: draw brand text
 			const brandFont = fontString('dm-sans-bold', 28, 700)
 			TextRenderer.draw(ctx, barLeft, barY + 14, 'RAYNA TOURS', {
 				font: brandFont,
@@ -525,6 +562,7 @@ export async function renderSummerHoliday(
 			const pillX = barRight - pillW
 			const pillY = barY
 
+			// Pill border
 			ctx.save()
 			Effects.roundedRectPath(ctx, pillX, pillY, pillW, pillH, pillR)
 			ctx.strokeStyle = '#dedede'
@@ -532,10 +570,12 @@ export async function renderSummerHoliday(
 			ctx.stroke()
 			ctx.restore()
 
+			// Globe icon
 			const globeCX = pillX + pillPadX + globeSize / 2
 			const globeCY = pillY + pillH / 2
 			drawGlobeIcon(ctx, globeCX, globeCY, globeSize)
 
+			// Website text
 			const textStartX = globeCX + globeSize / 2 + globeGap
 			TextRenderer.draw(ctx, textStartX, pillY + pillH / 2, website, {
 				font: pillFont,
