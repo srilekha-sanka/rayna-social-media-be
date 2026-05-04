@@ -67,7 +67,7 @@ interface Job {
 	error?: string
 	started_at: Date
 	completed_at?: Date
-	progress?: { completed: number; total: number }
+	progress?: { completed: number; total: number; failed?: number }
 }
 
 // --- Job Store ---
@@ -178,10 +178,41 @@ class ContentStudioService {
 			base_content?: string; hashtags?: string[]; media_urls?: string[]
 		},
 	) {
+		const result = await this.composeWithTemplateCore(entry, userId, contentSource, template, data, () => {
+			jobStore.set(jobId, { ...jobStore.get(jobId)!, progress: { completed: 1, total: 2 } })
+		})
+
+		jobStore.set(jobId, {
+			status: 'COMPLETED',
+			result,
+			started_at: jobStore.get(jobId)!.started_at,
+			completed_at: new Date(),
+			progress: { completed: 2, total: 2 },
+		})
+	}
+
+	private async composeWithTemplateCore(
+		entry: CalendarEntry,
+		userId: string,
+		contentSource: string,
+		template: DesignTemplate,
+		data?: {
+			stock_image_urls?: string[]
+			ai_image_style?: 'photo' | 'digital-art' | '3d' | 'painting'
+			ai_image_prompt?: string
+			num_images?: number
+			apply_overlay?: boolean
+			generate_ai_caption?: boolean
+			base_content?: string; hashtags?: string[]; media_urls?: string[]
+		},
+		onTemplateApplied?: () => void,
+	): Promise<{ post: Post | null; entry: CalendarEntry; content_source: string; template_name: string }> {
+		const entryId = entry.id
 		let mediaUrls: string[] = data?.media_urls || []
 
 		// Templates that need multiple images override the requested count
 		const multiImageSlugs = ['promo-collage', 'photo-board']
+		const MAX_TEMPLATE_IMAGES = 10
 		const numImages = multiImageSlugs.includes(template.slug)
 			? 4
 			: (data?.num_images || 1)
@@ -197,7 +228,10 @@ class ContentStudioService {
 		// For explore-activities/destinations or mixed carousels, fetch all plan products
 		// and take exactly ONE image per product (the main/first image).
 		const isExploreCarousel = template.slug === 'explore-activities' || template.slug === 'explore-destinations' || template.slug === 'summer-holiday' || template.slug === 'itineraries' || template.slug === 'travel-destinations'
-		const needsMultiProductImages = (isMixedCarousel || isExploreCarousel) && contentSource === 'PRODUCT'
+		// Only pull the plan-wide product pool when the entry itself has no single product focus
+		// (mixed carousel or unassigned). Otherwise every batch entry would render identical output
+		// because fetchMixedCarouselProducts returns the same set regardless of entry.
+		const needsMultiProductImages = (isMixedCarousel || (isExploreCarousel && !entry.product_id))
 
 		if (needsMultiProductImages) {
 			mixedProducts = await this.fetchMixedCarouselProducts(genConfig, entry.content_plan_id)
@@ -240,9 +274,9 @@ class ContentStudioService {
 				entry.product = await Product.findByPk(entry.product_id) as Product
 			}
 			if (entry.product?.image_urls?.length) {
-				// For explore carousels: only take 1 image per product (not multiple from same product)
-				const imageCount = isExploreCarousel ? 1 : numImages
-				mediaUrls = entry.product.image_urls.slice(0, imageCount)
+				// Give templates the full image pool — multi-slot covers (polaroids, grids) render
+				// empty frames if they only receive 1 image. Templates that only need 1 ignore extras.
+				mediaUrls = entry.product.image_urls.slice(0, MAX_TEMPLATE_IMAGES)
 			}
 		} else if (!mediaUrls.length && contentSource === 'STOCK') {
 			if (data?.stock_image_urls?.length) {
@@ -253,7 +287,19 @@ class ContentStudioService {
 				entry.product = await Product.findByPk(entry.product_id) as Product
 			}
 			if (entry.product?.image_urls?.length) {
-				mediaUrls = entry.product.image_urls.slice(0, numImages)
+				mediaUrls = entry.product.image_urls.slice(0, Math.max(numImages, MAX_TEMPLATE_IMAGES))
+			}
+		}
+
+		// Last-resort product resolution — ensures explore-carousel fallbacks still get base images
+		// even when contentSource is AI_GENERATED and the entry has no direct product link.
+		if (!mediaUrls.length && !entry.product_id && genConfig?.product_ids?.length) {
+			const product = await Product.findOne({ where: { id: { [Op.in]: genConfig.product_ids }, is_active: true } })
+			if (product?.image_urls?.length) {
+				await entry.update({ product_id: product.id })
+				entry.product_id = product.id
+				entry.product = product
+				mediaUrls = product.image_urls.slice(0, MAX_TEMPLATE_IMAGES)
 			}
 		}
 
@@ -282,7 +328,7 @@ class ContentStudioService {
 			additional_prompt: data?.ai_image_prompt,
 		})
 
-		jobStore.set(jobId, { ...jobStore.get(jobId)!, progress: { completed: 1, total: 2 } })
+		if (onTemplateApplied) onTemplateApplied()
 
 		// Step 3: Generate AI caption
 		let aiCaption = data?.base_content || undefined
@@ -348,12 +394,65 @@ Note: Using AI-designed poster with "${template.name}" style.`)
 			],
 		})
 
+		return { post: full, entry, content_source: contentSource, template_name: template.name }
+	}
+
+	private async processBatchCompose(
+		jobId: string,
+		entries: CalendarEntry[],
+		userId: string,
+		contentSource: string,
+		template: DesignTemplate,
+		data: {
+			stock_image_urls?: string[]
+			ai_image_style?: 'photo' | 'digital-art' | '3d' | 'painting'
+			ai_image_prompt?: string
+			num_images?: number
+			apply_overlay?: boolean
+			generate_ai_caption?: boolean
+		},
+		concurrency: number,
+	) {
+		const total = entries.length
+		const results: Array<{ entry_id: string; status: 'COMPLETED' | 'FAILED'; post_id?: string; error?: string }> = []
+		let completed = 0
+		let failed = 0
+
+		const queue = [...entries]
+		const updateProgress = () => {
+			const job = jobStore.get(jobId)
+			if (job) jobStore.set(jobId, { ...job, progress: { completed, total, failed } })
+		}
+
+		const worker = async () => {
+			while (queue.length) {
+				const entry = queue.shift()
+				if (!entry) break
+				try {
+					const res = await this.composeWithTemplateCore(entry, userId, contentSource, template, data)
+					completed++
+					results.push({ entry_id: entry.id, status: 'COMPLETED', post_id: res.post?.id })
+				} catch (err: any) {
+					failed++
+					results.push({ entry_id: entry.id, status: 'FAILED', error: err?.message || 'Unknown error' })
+				}
+				updateProgress()
+			}
+		}
+
+		const workerCount = Math.max(1, Math.min(concurrency, total))
+		await Promise.all(Array.from({ length: workerCount }, () => worker()))
+
+		const job = jobStore.get(jobId)!
 		jobStore.set(jobId, {
+			...job,
 			status: 'COMPLETED',
-			result: { post: full, entry, content_source: contentSource, template_name: template.name },
-			started_at: jobStore.get(jobId)!.started_at,
+			result: {
+				summary: { total, completed, failed, template_name: template.name },
+				entries: results,
+			},
 			completed_at: new Date(),
-			progress: { completed: 2, total: 2 },
+			progress: { completed, total, failed },
 		})
 	}
 
@@ -549,12 +648,82 @@ Note: Using AI-designed poster with "${template.name}" style.`)
 		return { statusCode: 200, payload: plan, message: 'Plan approved — now review and approve individual entries for composing' }
 	}
 
+	async approveAllEntries(planId: string, data: { entry_ids?: string[] }): Promise<IServiceResponse> {
+		const plan = await ContentPlan.findByPk(planId)
+		if (!plan) throw new NotFoundError('Content plan not found')
+
+		const whereClause: WhereOptions = {
+			content_plan_id: planId,
+			is_active: true,
+			status: 'SUGGESTED',
+		}
+		if (data.entry_ids?.length) (whereClause as any).id = { [Op.in]: data.entry_ids }
+
+		const [approved] = await CalendarEntry.update(
+			{ status: 'APPROVED' } as any,
+			{ where: whereClause },
+		)
+
+		return {
+			statusCode: 200,
+			payload: { plan_id: planId, approved_count: approved },
+			message: approved
+				? `Approved ${approved} entries — ready for batch compose`
+				: 'No SUGGESTED entries found to approve',
+		}
+	}
+
 	async rejectPlan(id: string): Promise<IServiceResponse> {
 		const plan = await ContentPlan.findByPk(id)
 		if (!plan) throw new NotFoundError('Content plan not found')
 		if (plan.status !== 'PENDING_REVIEW') throw new BadRequestError('Only PENDING_REVIEW plans can be rejected')
 		await plan.update({ status: 'DRAFT' })
 		return { statusCode: 200, payload: plan, message: 'Plan rejected, moved back to DRAFT' }
+	}
+
+	async submitAllEntriesForReview(planId: string, data: { entry_ids?: string[] }): Promise<IServiceResponse> {
+		const plan = await ContentPlan.findByPk(planId)
+		if (!plan) throw new NotFoundError('Content plan not found')
+
+		// Mirrors POST /posts/:id/submit for every entry in the plan. Accepts entries that are
+		// still COMPOSING and also self-heals entries already at IN_REVIEW whose posts were
+		// never bumped — otherwise the review queue's inner join on Post.status='PENDING_REVIEW'
+		// silently drops them.
+		const entryWhere: WhereOptions = {
+			content_plan_id: planId,
+			is_active: true,
+			status: { [Op.in]: ['COMPOSING', 'IN_REVIEW'] },
+		}
+		if (data.entry_ids?.length) (entryWhere as any).id = { [Op.in]: data.entry_ids }
+
+		const entries = await CalendarEntry.findAll({ where: entryWhere, attributes: ['id'] })
+		const entryIds = entries.map((e) => e.id)
+
+		if (!entryIds.length) {
+			return {
+				statusCode: 200,
+				payload: { plan_id: planId, moved_count: 0, posts_updated: 0 },
+				message: 'No entries found to submit for review',
+			}
+		}
+
+		const [postsUpdated] = await Post.update(
+			{ status: 'PENDING_REVIEW' } as any,
+			{ where: { calendar_entry_id: { [Op.in]: entryIds }, is_active: true, status: 'DRAFT' } },
+		)
+
+		const [movedCount] = await CalendarEntry.update(
+			{ status: 'IN_REVIEW' } as any,
+			{ where: { id: { [Op.in]: entryIds }, status: 'COMPOSING' } },
+		)
+
+		return {
+			statusCode: 200,
+			payload: { plan_id: planId, moved_count: movedCount, posts_updated: postsUpdated },
+			message: postsUpdated
+				? `Submitted ${postsUpdated} ${postsUpdated === 1 ? 'post' : 'posts'} for review`
+				: 'No DRAFT posts found to submit for review',
+		}
 	}
 
 	// --- Review Queue ---
@@ -584,41 +753,19 @@ Note: Using AI-designed poster with "${template.name}" style.`)
 			],
 		})
 
-		// Backfill products for entries missing product_id using their plan's generation_config
-		const planIds = [...new Set(entries.filter((e) => !e.product_id).map((e) => e.content_plan_id))]
-		const planProductMap = new Map<string, Product[]>()
-		for (const planId of planIds) {
-			const plan = entries.find((e) => e.content_plan_id === planId)?.content_plan
-			const genConfig = plan?.generation_config as { product_ids?: string[] } | null
-			if (genConfig?.product_ids?.length) {
-				const products = await Product.findAll({
-					where: { id: { [Op.in]: genConfig.product_ids }, is_active: true },
-					attributes: ['id', 'name', 'price', 'offer_label', 'image_urls', 'category'],
-				})
-				if (products.length) planProductMap.set(planId, products)
-			}
-		}
+		const planProductMap = await this.buildPlanProductPool(entries)
 
 		const planProductIndex = new Map<string, number>()
 		const enriched = entries.map((e) => {
 			const json = e.toJSON() as any
-			const isMixed = e.description?.includes('MIXED_CAROUSEL')
-			if (!json.product && planProductMap.has(e.content_plan_id)) {
-				const products = planProductMap.get(e.content_plan_id)!
+			const isMixed = !!e.description?.includes('MIXED_CAROUSEL')
+			const pool = planProductMap.get(e.content_plan_id)
+			if (!json.product && pool?.length) {
 				const idx = planProductIndex.get(e.content_plan_id) || 0
-				json.product = products[idx % products.length].toJSON()
+				json.product = pool[idx % pool.length].toJSON()
 				planProductIndex.set(e.content_plan_id, idx + 1)
 			}
-			if (json.post?.media_urls?.length) {
-				json.media_urls = json.post.media_urls
-			} else if (isMixed && planProductMap.has(e.content_plan_id)) {
-				const products = planProductMap.get(e.content_plan_id)!
-				json.media_urls = products
-					.filter((p) => p.image_urls?.length)
-					.map((p, idx) => p.image_urls[idx % p.image_urls.length])
-			} else {
-				json.media_urls = json.product?.image_urls || []
-			}
+			json.media_urls = this.resolveEntryMediaUrls(e, json, isMixed, pool)
 			return json
 		})
 
@@ -938,6 +1085,83 @@ Note: Using AI-designed poster with "${template.name}" style.`)
 		}
 	}
 
+	async composeAllForPlan(
+		planId: string,
+		userId: string,
+		data: {
+			template_id: string
+			entry_ids?: string[]
+			content_source: 'PRODUCT' | 'STOCK' | 'AI_GENERATED'
+			stock_image_urls?: string[]
+			apply_overlay: boolean
+			generate_ai_caption: boolean
+			ai_image_style: 'photo' | 'digital-art' | '3d' | 'painting'
+			ai_image_prompt?: string
+			num_images: number
+			concurrency: number
+		},
+	): Promise<IServiceResponse> {
+		const plan = await ContentPlan.findByPk(planId)
+		if (!plan) throw new NotFoundError('Content plan not found')
+
+		const template = await DesignTemplate.findByPk(data.template_id)
+		if (!template || !template.is_active) throw new BadRequestError('Design template not found or inactive')
+
+		const whereClause: WhereOptions = {
+			content_plan_id: planId,
+			is_active: true,
+			status: { [Op.in]: ['APPROVED', 'COMPOSING'] },
+		}
+		if (data.entry_ids?.length) (whereClause as any).id = { [Op.in]: data.entry_ids }
+
+		const entries = await CalendarEntry.findAll({
+			where: whereClause,
+			include: [
+				{ model: Product },
+				{ model: Campaign, attributes: ['id', 'name', 'type', 'goal'] },
+				{ model: ContentPlan, attributes: ['id', 'status', 'generation_config'] },
+			],
+			order: [['date', 'ASC']],
+		})
+
+		if (!entries.length) {
+			throw new BadRequestError(
+				data.entry_ids?.length
+					? 'No matching APPROVED/COMPOSING entries found for the provided entry_ids'
+					: 'No APPROVED entries in this plan — approve entries first before batch composing',
+			)
+		}
+
+		const jobId = `compose-all-${planId}-${Date.now()}`
+		jobStore.set(jobId, {
+			status: 'PROCESSING',
+			started_at: new Date(),
+			progress: { completed: 0, total: entries.length, failed: 0 },
+		})
+
+		this.processBatchCompose(jobId, entries, userId, data.content_source, template, data, data.concurrency).catch((err: Error) => {
+			jobStore.set(jobId, {
+				status: 'FAILED',
+				error: err.message,
+				started_at: jobStore.get(jobId)!.started_at,
+				completed_at: new Date(),
+			})
+		})
+
+		return {
+			statusCode: 202,
+			payload: {
+				job_id: jobId,
+				plan_id: planId,
+				template_name: template.name,
+				total: entries.length,
+				concurrency: Math.max(1, Math.min(data.concurrency, entries.length)),
+				status: 'PROCESSING',
+			},
+			message: `Batch compose started for ${entries.length} entries using "${template.name}". Poll GET /content-studio/jobs/${jobId} for progress.`,
+		}
+	}
+
 	async generatePostContent(entryId: string): Promise<IServiceResponse> {
 		const entry = await CalendarEntry.findByPk(entryId, {
 			include: [
@@ -1197,42 +1421,19 @@ Note: Using AI-designed poster with "${template.name}" style.`)
 			],
 		})
 
-		// Backfill products for entries missing product_id using their plan's generation_config
-		const planIds = [...new Set(entries.filter((e) => !e.product_id).map((e) => e.content_plan_id))]
-		const planProductMap = new Map<string, Product[]>()
-		for (const planId of planIds) {
-			const plan = entries.find((e) => e.content_plan_id === planId)?.content_plan
-			const genConfig = plan?.generation_config as { product_ids?: string[] } | null
-			if (genConfig?.product_ids?.length) {
-				const products = await Product.findAll({
-					where: { id: { [Op.in]: genConfig.product_ids }, is_active: true },
-					attributes: ['id', 'name', 'price', 'offer_label', 'image_urls', 'category'],
-				})
-				if (products.length) planProductMap.set(planId, products)
-			}
-		}
+		const planProductMap = await this.buildPlanProductPool(entries)
 
 		const planProductIndex = new Map<string, number>()
 		const enriched = entries.map((e) => {
 			const json = e.toJSON() as any
-			const isMixed = e.description?.includes('MIXED_CAROUSEL')
-			if (!json.product && planProductMap.has(e.content_plan_id)) {
-				const products = planProductMap.get(e.content_plan_id)!
+			const isMixed = !!e.description?.includes('MIXED_CAROUSEL')
+			const pool = planProductMap.get(e.content_plan_id)
+			if (!json.product && pool?.length) {
 				const idx = planProductIndex.get(e.content_plan_id) || 0
-				json.product = products[idx % products.length].toJSON()
+				json.product = pool[idx % pool.length].toJSON()
 				planProductIndex.set(e.content_plan_id, idx + 1)
 			}
-			if (json.post?.media_urls?.length) {
-				json.media_urls = json.post.media_urls
-			} else if (isMixed && planProductMap.has(e.content_plan_id)) {
-				// Mixed carousel preview: one image per product for visual variety
-				const products = planProductMap.get(e.content_plan_id)!
-				json.media_urls = products
-					.filter((p) => p.image_urls?.length)
-					.map((p, idx) => p.image_urls[idx % p.image_urls.length])
-			} else {
-				json.media_urls = json.product?.image_urls || []
-			}
+			json.media_urls = this.resolveEntryMediaUrls(e, json, isMixed, pool)
 			return json
 		})
 
@@ -1296,6 +1497,81 @@ Note: Using AI-designed poster with "${template.name}" style.`)
 
 	// --- Private helpers ---
 
+	/**
+	 * Build a per-plan product pool used to enrich entries that lack a product_id
+	 * (ENGAGEMENT / FESTIVAL / VALUE / BRAND_AWARENESS / MIXED_CAROUSEL).
+	 *
+	 * Sources, unioned per plan:
+	 *   1. product_ids from sibling entries in the same plan that DO have product_id
+	 *      (most reliable — survives plans created without generation_config).
+	 *   2. plan.generation_config.product_ids.
+	 *
+	 * Pass `genConfigsOverride` when the entries don't have ContentPlan included
+	 * (e.g. findPlanById where the plan is fetched separately).
+	 */
+	private async buildPlanProductPool(
+		entries: CalendarEntry[],
+		genConfigsOverride?: Map<string, { product_ids?: string[] } | null | undefined>,
+	): Promise<Map<string, Product[]>> {
+		const planIdsNeedingPool = new Set(entries.filter((e) => !e.product_id).map((e) => e.content_plan_id))
+		if (!planIdsNeedingPool.size) return new Map()
+
+		const planProductIds = new Map<string, Set<string>>()
+		for (const e of entries) {
+			if (!planIdsNeedingPool.has(e.content_plan_id)) continue
+			const bucket = planProductIds.get(e.content_plan_id) || new Set<string>()
+			if (e.product_id) bucket.add(e.product_id)
+
+			const override = genConfigsOverride?.get(e.content_plan_id)
+			const genConfig = override !== undefined
+				? override
+				: ((e as any).content_plan?.generation_config as { product_ids?: string[] } | null)
+			genConfig?.product_ids?.forEach((id) => bucket.add(id))
+
+			planProductIds.set(e.content_plan_id, bucket)
+		}
+
+		const allIds = [...new Set([...planProductIds.values()].flatMap((s) => [...s]))]
+		if (!allIds.length) return new Map()
+
+		const products = await Product.findAll({
+			where: { id: { [Op.in]: allIds }, is_active: true },
+			attributes: ['id', 'name', 'price', 'offer_label', 'image_urls', 'category'],
+		})
+		const byId = new Map(products.map((p) => [p.id, p]))
+
+		const pool = new Map<string, Product[]>()
+		for (const [planId, ids] of planProductIds) {
+			const list = [...ids].map((id) => byId.get(id)).filter((p): p is Product => !!p)
+			if (list.length) pool.set(planId, list)
+		}
+		return pool
+	}
+
+	/**
+	 * Resolves the `media_urls` shown for an entry in the calendar UI.
+	 *
+	 * Priority:
+	 *   1. Composed post's media_urls.
+	 *   2. MIXED_CAROUSEL only → one image per product from the plan pool (visual mix).
+	 *   3. Everything else → the single linked/backfilled product's images.
+	 *      Non-product entries (ENGAGEMENT / FESTIVAL / VALUE / BRAND_AWARENESS) get
+	 *      json.product backfilled from the pool by the caller, so they show ONE
+	 *      product's images — not a mix.
+	 */
+	private resolveEntryMediaUrls(_e: CalendarEntry, json: any, isMixed: boolean, pool: Product[] | undefined): string[] {
+		if (json.post?.media_urls?.length) return json.post.media_urls
+
+		if (isMixed && pool?.length) {
+			const fromPool = pool
+				.filter((p) => p.image_urls?.length)
+				.map((p, idx) => p.image_urls[idx % p.image_urls.length])
+			if (fromPool.length) return fromPool
+		}
+
+		return json.product?.image_urls || []
+	}
+
 	private async findPlanById(id: string) {
 		const plan = await ContentPlan.findByPk(id, {
 			include: [
@@ -1314,33 +1590,20 @@ Note: Using AI-designed poster with "${template.name}" style.`)
 			],
 		})
 
-		// Backfill product for entries that have no product_id but plan has product_ids configured
 		const genConfig = plan.generation_config as { product_ids?: string[] } | null
-		let fallbackProducts: Product[] | null = null
-		if (genConfig?.product_ids?.length) {
-			fallbackProducts = await Product.findAll({
-				where: { id: { [Op.in]: genConfig.product_ids }, is_active: true },
-				attributes: ['id', 'name', 'price', 'offer_label', 'image_urls', 'category'],
-			})
-		}
+		const genConfigOverride = new Map<string, { product_ids?: string[] } | null>([[plan.id, genConfig]])
+		const planProductMap = await this.buildPlanProductPool(entries, genConfigOverride)
+		const fallbackProducts = planProductMap.get(plan.id)
 
 		let productIndex = 0
 		const enriched = entries.map((e) => {
 			const json = e.toJSON() as any
-			const isMixed = e.description?.includes('MIXED_CAROUSEL')
+			const isMixed = !!e.description?.includes('MIXED_CAROUSEL')
 			if (!json.product && fallbackProducts?.length) {
 				json.product = fallbackProducts[productIndex % fallbackProducts.length].toJSON()
 				productIndex++
 			}
-			if (json.post?.media_urls?.length) {
-				json.media_urls = json.post.media_urls
-			} else if (isMixed && fallbackProducts?.length) {
-				json.media_urls = fallbackProducts
-					.filter((p) => p.image_urls?.length)
-					.map((p, idx) => p.image_urls[idx % p.image_urls.length])
-			} else {
-				json.media_urls = json.product?.image_urls || []
-			}
+			json.media_urls = this.resolveEntryMediaUrls(e, json, isMixed, fallbackProducts)
 			return json
 		})
 

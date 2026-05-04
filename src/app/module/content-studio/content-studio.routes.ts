@@ -26,6 +26,8 @@ contentStudioRouter.post('/plans/:id/generate-entries', controller.generateEntri
 // Plan Approval Workflow
 contentStudioRouter.post('/plans/:id/submit-review', controller.submitForReview)
 contentStudioRouter.post('/plans/:id/approve', controller.approvePlan)
+contentStudioRouter.post('/plans/:id/approve-all-entries', controller.approveAllEntries)
+contentStudioRouter.post('/plans/:id/submit-all-for-review', controller.submitAllEntriesForReview)
 contentStudioRouter.post('/plans/:id/reject', controller.rejectPlan)
 
 // Review Queue
@@ -39,6 +41,7 @@ contentStudioRouter.post('/schedule/auto', controller.autoSchedule)
 
 // Post Composer — compose entry into post, generate content, preview
 contentStudioRouter.post('/entries/:id/compose', controller.composeEntry)
+contentStudioRouter.post('/plans/:id/compose-all', controller.composeAllForPlan)
 contentStudioRouter.post('/entries/:id/generate-content', controller.generatePostContent)
 contentStudioRouter.get('/posts/:id/preview', controller.previewPost)
 
